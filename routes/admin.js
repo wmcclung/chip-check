@@ -471,27 +471,45 @@ function statusBadge(status) {
 function adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr }) {
   const activeCount = friends.filter(f => f.active).length;
 
-  const historyRows = history.map(row => `
+  let historyRows  = '';
+  let historyCards = '';
+  for (const row of history) {
+    const editArgs = `'${escapeHtml(row.date)}','${escapeHtml(row.status)}','${escapeHtml(row.notes || '')}'`;
+    historyRows += `
     <tr>
       <td>${escapeHtml(row.date)}</td>
       <td>${statusBadge(row.status)}</td>
       <td>${row.streak_at_checkin !== null ? row.streak_at_checkin : '—'}</td>
       <td>${row.selfie_url ? `<a href="${escapeHtml(row.selfie_url)}" target="_blank">📸</a>` : '—'}</td>
       <td class="muted small">${escapeHtml(row.notes || '')}</td>
-      <td>
-        <button class="btn-sm" onclick="editDay('${escapeHtml(row.date)}','${escapeHtml(row.status)}','${escapeHtml(row.notes || '')}')">Edit</button>
-      </td>
-    </tr>`).join('');
+      <td><button class="btn-sm" onclick="editDay(${editArgs})">Edit</button></td>
+    </tr>`;
+    historyCards += `
+    <div class="admin-card-row">
+      <div class="card-row-header">
+        <span class="card-date">${escapeHtml(row.date)}</span>
+        ${statusBadge(row.status)}
+      </div>
+      <div class="card-row-meta">
+        Streak: ${row.streak_at_checkin !== null ? row.streak_at_checkin : '—'}${row.selfie_url ? ` &nbsp;·&nbsp; <a href="${escapeHtml(row.selfie_url)}" target="_blank">📸 Selfie</a>` : ''}${row.notes ? `<br>${escapeHtml(row.notes)}` : ''}
+      </div>
+      <div class="card-row-actions">
+        <button class="btn-sm" onclick="editDay(${editArgs})">Edit</button>
+      </div>
+    </div>`;
+  }
 
-  const friendRows = friends.map(f => {
+  let friendRows  = '';
+  let friendCards = '';
+  for (const f of friends) {
     const mode = f.notify_mode || 'realtime';
     const modeLabel = mode === 'digest'
       ? `Digest @ ${escapeHtml(f.digest_time || '?')} ${escapeHtml(f.timezone ? f.timezone.split('/')[1].replace('_', ' ') : 'CT')}`
       : 'Real-time';
     const notifyFor = [];
-    if (f.notify_success !== 0) notifyFor.push('✅ Success');
-    if (f.notify_missed  !== 0) notifyFor.push('❌ Missed');
-    const notifyLabel = notifyFor.length ? notifyFor.join(', ') : 'None';
+    if (f.notify_success !== 0) notifyFor.push('✅');
+    if (f.notify_missed  !== 0) notifyFor.push('❌');
+    const notifyLabel = notifyFor.length ? notifyFor.join(' ') : 'None';
 
     const emailDisplay = f.email
       ? escapeHtml(f.email.length > 22 ? f.email.slice(0, 22) + '…' : f.email)
@@ -514,7 +532,23 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
       `data-email="${escapeHtml(f.email || '')}"`,
     ].join(' ');
 
-    return `
+    const actionBtns = f.active ? `
+          <button class="btn-sm" onclick="testSMS(${f.id})">Test</button>
+          <button class="btn-sm" onclick="editPrefs(this)" ${prefsData}>Prefs</button>
+          <form method="POST" action="/admin/friends/${f.id}/remove" style="display:inline">
+            <button type="submit" class="btn-sm btn-danger" onclick="return confirm('Remove ${escapeHtml(f.name)}?')">Remove</button>
+          </form>` : '—';
+
+    const cardActions = f.active ? `
+      <div class="card-row-actions">
+        <button class="btn-sm" onclick="testSMS(${f.id})">Test Notify</button>
+        <button class="btn-sm" onclick="editPrefs(this)" ${prefsData}>Edit Prefs</button>
+        <form method="POST" action="/admin/friends/${f.id}/remove" style="display:inline;flex:1">
+          <button type="submit" class="btn-sm btn-danger" style="width:100%" onclick="return confirm('Remove ${escapeHtml(f.name)}?')">Remove</button>
+        </form>
+      </div>` : '';
+
+    friendRows += `
     <tr class="${f.active ? '' : 'inactive-row'}">
       <td>${escapeHtml(f.name)}</td>
       <td class="small">${escapeHtml(f.phone || '—')}</td>
@@ -524,16 +558,25 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
       <td class="small muted">${channelLabel}</td>
       <td class="small muted">${modeLabel}</td>
       <td class="small muted">${notifyLabel}</td>
-      <td>
-        ${f.active ? `
-          <button class="btn-sm" onclick="testSMS(${f.id})">Test Notify</button>
-          <button class="btn-sm" onclick="editPrefs(this)" ${prefsData}>Edit Prefs</button>
-          <form method="POST" action="/admin/friends/${f.id}/remove" style="display:inline">
-            <button type="submit" class="btn-sm btn-danger" onclick="return confirm('Remove ${escapeHtml(f.name)}?')">Remove</button>
-          </form>` : '—'}
-      </td>
+      <td>${actionBtns}</td>
     </tr>`;
-  }).join('');
+
+    const contactLine = [
+      f.phone ? `📱 ${escapeHtml(f.phone)}` : '',
+      f.email ? `📧 ${escapeHtml(f.email.length > 28 ? f.email.slice(0, 28) + '…' : f.email)}` : '',
+    ].filter(Boolean).join(' &nbsp;·&nbsp; ') || '—';
+
+    friendCards += `
+    <div class="admin-card-row ${f.active ? '' : 'inactive-row'}">
+      <div class="card-row-header">
+        <strong>${escapeHtml(f.name)}</strong>
+        ${f.active ? '<span class="badge badge-success">active</span>' : '<span class="badge badge-missed">removed</span>'}
+      </div>
+      <div class="card-row-meta">${contactLine}</div>
+      <div class="card-row-meta">${channelLabel} &nbsp;·&nbsp; ${modeLabel} &nbsp;·&nbsp; ${notifyLabel}</div>
+      ${cardActions}
+    </div>`;
+  }
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -569,12 +612,13 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
     <details open>
       <summary class="section-summary">📅 Last 30 Days</summary>
       <div class="admin-card">
-        <div class="table-scroll">
+        <div class="table-scroll hide-mobile">
           <table class="admin-table">
             <thead><tr><th>Date</th><th>Status</th><th>Streak</th><th>Selfie</th><th>Notes</th><th>Actions</th></tr></thead>
             <tbody>${historyRows}</tbody>
           </table>
         </div>
+        <div class="show-mobile">${historyCards}</div>
       </div>
     </details>
 
@@ -583,12 +627,13 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
       <summary class="section-summary">👥 Friends (${activeCount} active)</summary>
       <div class="admin-card">
         <p class="muted small">Share <code>/join</code> link to add new friends.</p>
-        <div class="table-scroll">
+        <div class="table-scroll hide-mobile">
           <table class="admin-table">
             <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Status</th><th>Joined</th><th>Via</th><th>Timing</th><th>Notified For</th><th>Actions</th></tr></thead>
             <tbody>${friendRows}</tbody>
           </table>
         </div>
+        <div class="show-mobile">${friendCards}</div>
       </div>
     </details>
 
@@ -647,7 +692,7 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
         <p class="error-msg" style="margin-bottom:1rem">
           ⚠️ These actions send <strong>real SMS messages</strong> to real friends and modify today's data.
         </p>
-        <div style="display:flex;flex-wrap:wrap;gap:0.6rem;margin-bottom:1rem">
+        <div class="test-btn-grid">
           <button class="btn-test" onclick="testAction('open-window',    'This will set today to pending so the check-in button appears on the main page.')">Open Check-in Window</button>
           <button class="btn-test" onclick="testAction('simulate-success','This will mark today as SUCCESS and send a real MMS to all active real-time friends.')">Simulate Successful Check-in</button>
           <button class="btn-test" onclick="testAction('simulate-missed', 'This will mark today as MISSED and send a real shame SMS to all active real-time friends.')">Simulate Missed Deadline</button>

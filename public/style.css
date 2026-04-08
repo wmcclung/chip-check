@@ -21,6 +21,7 @@ html, body {
   color: var(--amber);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 /* ── Layout ─────────────────────────────────────────────────────────────────── */
@@ -124,15 +125,18 @@ html, body {
 
 /* ── Selfie screen ───────────────────────────────────────────────────────────── */
 .selfie-flash-bg {
-  width: 100vw;
-  min-height: 100vh;
+  /* Fixed so it truly covers the full viewport with no overflow risk */
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  width: 100%;
+  height: 100%;
   background: #ffffff;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 2rem;
-  position: relative;
   overflow: hidden;
 }
 
@@ -805,4 +809,151 @@ code {
 }
 .channel-pulse {
   animation: channel-pulse 0.5s ease-in-out 4;
+}
+
+/* ── Mobile visibility helpers ───────────────────────────────────────────────── */
+.show-mobile { display: none; }
+
+/* ── Admin testing tools button grid ─────────────────────────────────────────── */
+.test-btn-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+/* ── Admin mobile card layout ────────────────────────────────────────────────── */
+.admin-card-row {
+  background: var(--bg);
+  border: 1px solid #1e1e2a;
+  border-radius: 4px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.6rem;
+}
+.admin-card-row.inactive-row { opacity: 0.45; }
+
+.card-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+  flex-wrap: wrap;
+}
+.card-row-header strong { color: var(--white); font-size: 0.95rem; }
+.card-date { color: var(--amber); font-size: 0.9rem; font-weight: 700; letter-spacing: 0.05em; }
+
+.card-row-meta {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+  line-height: 1.5;
+}
+.card-row-meta a { color: var(--amber-dim); }
+
+.card-row-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+
+/* ── Mobile breakpoint ───────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  /* Visibility */
+  .hide-mobile { display: none !important; }
+  .show-mobile { display: block; }
+
+  /* Tighten overall screen padding */
+  .screen { padding: 1.5rem 1rem; }
+
+  /* Check-in page: make primary buttons full-width and tall */
+  .checkin-btn {
+    width: min(340px, 100%);
+    padding: 1.1rem 1.5rem;
+    font-size: 1.2rem;
+  }
+  .secondary-btn {
+    width: min(340px, 100%);
+  }
+
+  /* Selfie screen: take-selfie button full-width */
+  .take-selfie-btn {
+    width: min(300px, 80vw);
+    padding: 1.1rem 1.5rem;
+  }
+
+  /* Quote block: prevent it from extending too wide */
+  blockquote.lotr-quote {
+    width: 100%;
+    margin: 1rem 0;
+  }
+
+  /* Streak label: tighten letter-spacing on small screens */
+  .streak-label { letter-spacing: 0.15em; font-size: 0.95rem; }
+
+  /* Join page title */
+  .join-title { font-size: 1.6rem; letter-spacing: 0.12em; }
+
+  /* Select cards: ensure they don't overflow their container */
+  .select-cards-label,
+  .select-cards,
+  .form-group,
+  .channel-hint,
+  .both-channel-msg { max-width: 100%; }
+
+  /* Digest opts: stack the time input and timezone select */
+  .digest-opts { flex-direction: column; align-items: flex-start; }
+  .digest-opts input[type="time"],
+  .digest-opts select { width: 100%; }
+
+  /* ── Admin panel ── */
+
+  /* Header: stack on small screens */
+  .admin-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+  }
+
+  /* Settings / override / password form rows: stack vertically */
+  .form-row {
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .form-row .form-group { width: 100%; max-width: 100%; }
+  .form-row input,
+  .form-row select { width: 100%; }
+  .form-row .btn-primary,
+  .form-row > .btn-primary {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    min-height: 48px;
+  }
+
+  /* Make all admin primary/test buttons comfortably tappable */
+  .btn-primary { min-height: 44px; }
+  .btn-sm {
+    padding: 0.55rem 0.8rem;
+    font-size: 0.8rem;
+    min-height: 40px;
+  }
+
+  /* Testing tools: each button full-width */
+  .test-btn-grid { flex-direction: column; }
+  .test-btn-grid .btn-test { width: 100%; text-align: left; min-height: 44px; }
+
+  /* Card actions: allow buttons to fill row */
+  .card-row-actions .btn-sm { flex: 1; text-align: center; }
+
+  /* Modal actions: stack */
+  .modal-actions { flex-direction: column; }
+  .modal-actions .btn-primary { width: 100%; min-height: 48px; }
+
+  /* Milestone overlay: ensure text doesn't get too small */
+  .moverlay-quote { font-size: clamp(1.2rem, 4.5vw, 2rem); }
+  .moverlay-badge { font-size: 0.95rem; letter-spacing: 0.12em; }
+
+  /* Milestone badge on success screen */
+  .milestone-badge { font-size: 0.75rem; }
 }
