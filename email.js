@@ -3,17 +3,17 @@ const { DateTime } = require('luxon');
 const { getSuccessQuote, getFailureQuote } = require('./quotes');
 
 const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
+  host: 'mail.privateemail.com',
   port: 587,
   secure: false,
   requireTLS: true,
   auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASSWORD,
   },
 });
 
-const FROM = () => process.env.GMAIL_USER;
+const FROM = () => process.env.EMAIL_USER;
 
 function sendWithTimeout(mailOptions, timeoutMs = 10000) {
   return Promise.race([
