@@ -38,6 +38,51 @@ function getCTDateStr() {
   ].join('-');
 }
 
+// ── Hard timeout wrapper ───────────────────────────────────────────────────────
+// Wraps any async route handler and guarantees a response within `ms` ms.
+// Intercepts res.json / res.send / res.redirect to clear the timer as soon as
+// the handler sends a response. Catches any thrown error and sends 500.
+
+function withTimeout(handler, ms = 15000) {
+  return async function (req, res, next) {
+    let done = false;
+
+    const timer = setTimeout(() => {
+      if (!done && !res.headersSent) {
+        done = true;
+        console.error(`[TIMEOUT] ${req.method} ${req.path} did not respond within ${ms}ms`);
+        res.status(504).json({ success: false, error: 'Request timed out' });
+      }
+    }, ms);
+
+    function finish() {
+      done = true;
+      clearTimeout(timer);
+    }
+
+    // Intercept the three response-sending methods
+    const origJson     = res.json.bind(res);
+    const origSend     = res.send.bind(res);
+    const origRedirect = res.redirect.bind(res);
+    res.json     = function (...a) { finish(); return origJson(...a); };
+    res.send     = function (...a) { finish(); return origSend(...a); };
+    res.redirect = function (...a) { finish(); return origRedirect(...a); };
+
+    try {
+      await handler(req, res, next);
+    } catch (err) {
+      if (!done && !res.headersSent) {
+        finish();
+        console.error(`[UNCAUGHT] ${req.method} ${req.path}:`, err);
+        res.status(500).json({ error: err.message || 'Server error' });
+      } else {
+        // Response already sent — log but don't double-respond
+        console.error(`[ERROR after response] ${req.method} ${req.path}:`, err);
+      }
+    }
+  };
+}
+
 // ── Auth middleware ────────────────────────────────────────────────────────────
 
 function requireAuth(req, res, next) {
@@ -48,7 +93,7 @@ function requireAuth(req, res, next) {
 // ── Rate limiter for login ─────────────────────────────────────────────────────
 
 const loginLimiter = rateLimit({
-  windowMs:        15 * 60 * 1000, // 15 min
+  windowMs:        15 * 60 * 1000,
   max:             5,
   standardHeaders: true,
   legacyHeaders:   false,
@@ -63,7 +108,7 @@ router.get('/admin/login', (req, res) => {
 
 // ── POST /admin/login ─────────────────────────────────────────────────────────
 
-router.post('/admin/login', loginLimiter, async (req, res) => {
+router.post('/admin/login', loginLimiter, withTimeout(async (req, res) => {
   const { password } = req.body;
   const stored = await getSetting('admin_password');
   if (password === stored) {
@@ -71,359 +116,300 @@ router.post('/admin/login', loginLimiter, async (req, res) => {
     return res.redirect('/admin');
   }
   res.status(401).send(loginPage('Invalid password.'));
-});
+  console.log('[/admin/login] Route complete, response sent');
+}));
 
 // ── GET /admin ────────────────────────────────────────────────────────────────
 
-router.get('/admin', requireAuth, async (req, res) => {
-  try {
-    const name    = await getSetting('primary_user_name') || 'Jake';
-    const streak  = await getCurrentStreak();
-    const openHour     = await getSetting('checkin_open_hour')     || '4';
-    const deadlineHour = await getSetting('checkin_deadline_hour') || '9';
+router.get('/admin', requireAuth, withTimeout(async (req, res) => {
+  const name         = await getSetting('primary_user_name') || 'Jake';
+  const streak       = await getCurrentStreak();
+  const openHour     = await getSetting('checkin_open_hour')     || '4';
+  const deadlineHour = await getSetting('checkin_deadline_hour') || '9';
 
-    // Today's info
-    const now = new Date();
-    const ctNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
-    const dateStr = [
-      ctNow.getFullYear(),
-      String(ctNow.getMonth() + 1).padStart(2, '0'),
-      String(ctNow.getDate()).padStart(2, '0'),
-    ].join('-');
+  const now   = new Date();
+  const ctNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+  const dateStr = [
+    ctNow.getFullYear(),
+    String(ctNow.getMonth() + 1).padStart(2, '0'),
+    String(ctNow.getDate()).padStart(2, '0'),
+  ].join('-');
 
-    const today   = await getTodayCheckin(dateStr);
-    const history = await getRecentCheckins(30);
-    const friends = await getAllFriends();
+  const today      = await getTodayCheckin(dateStr);
+  const history    = await getRecentCheckins(30);
+  const friends    = await getAllFriends();
+  const bestStreak = parseInt(await getSetting('best_streak') || '0', 10);
 
-    const bestStreak = parseInt(await getSetting('best_streak') || '0', 10);
-
-    res.send(adminDashboard({
-      name, streak, bestStreak, today, history, friends,
-      openHour, deadlineHour, dateStr,
-    }));
-  } catch (err) {
-    console.error('[GET /admin]', err);
-    res.status(500).send('<h1>Server error</h1>');
-  }
-});
+  res.send(adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr }));
+  console.log('[GET /admin] Route complete, response sent');
+}));
 
 // ── POST /admin/day ───────────────────────────────────────────────────────────
 
-router.post('/admin/day', requireAuth, async (req, res) => {
-  try {
-    const { date, status, notes } = req.body;
-    if (!date || !status) return res.status(400).json({ error: 'date and status required' });
+router.post('/admin/day', requireAuth, withTimeout(async (req, res) => {
+  const { date, status, notes } = req.body;
+  if (!date || !status) return res.status(400).json({ error: 'date and status required' });
 
-    await updateCheckin(date, { status, notes: notes || null });
-
-    // Recompute streak for the most recent resolved row
-    const streak = await getCurrentStreak();
-    // Update streak_at_checkin for this row if it's resolved
-    if (['success', 'missed', 'skipped'].includes(status)) {
-      await updateCheckin(date, { streak_at_checkin: status === 'missed' ? 0 : streak });
-    }
-
-    res.json({ ok: true, streak });
-  } catch (err) {
-    console.error('[POST /admin/day]', err);
-    res.status(500).json({ error: 'Server error' });
+  await updateCheckin(date, { status, notes: notes || null });
+  const streak = await getCurrentStreak();
+  if (['success', 'missed', 'skipped'].includes(status)) {
+    await updateCheckin(date, { streak_at_checkin: status === 'missed' ? 0 : streak });
   }
-});
+
+  res.json({ ok: true, streak });
+  console.log('[/admin/day] Route complete, response sent');
+}));
 
 // ── POST /admin/streak ────────────────────────────────────────────────────────
 
-router.post('/admin/streak', requireAuth, async (req, res) => {
-  try {
-    const value = parseInt(req.body.value, 10);
-    if (isNaN(value) || value < 0) return res.status(400).json({ error: 'Invalid value' });
+router.post('/admin/streak', requireAuth, withTimeout(async (req, res) => {
+  const value = parseInt(req.body.value, 10);
+  if (isNaN(value) || value < 0) return res.status(400).json({ error: 'Invalid value' });
 
-    const row = await getLastResolvedCheckin();
-    if (!row) return res.status(404).json({ error: 'No resolved checkin found' });
+  const row = await getLastResolvedCheckin();
+  if (!row) return res.status(404).json({ error: 'No resolved checkin found' });
 
-    await updateCheckin(row.date, { streak_at_checkin: value });
-    res.json({ ok: true, date: row.date, streak: value });
-  } catch (err) {
-    console.error('[POST /admin/streak]', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
+  await updateCheckin(row.date, { streak_at_checkin: value });
+  res.json({ ok: true, date: row.date, streak: value });
+  console.log('[/admin/streak] Route complete, response sent');
+}));
 
 // ── POST /admin/best-streak ───────────────────────────────────────────────────
 
-router.post('/admin/best-streak', requireAuth, async (req, res) => {
-  try {
-    const value = parseInt(req.body.value, 10);
-    if (isNaN(value) || value < 0) return res.status(400).json({ error: 'Invalid value' });
-    await setSetting('best_streak', value);
-    res.json({ ok: true, bestStreak: value });
-  } catch (err) {
-    console.error('[POST /admin/best-streak]', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
+router.post('/admin/best-streak', requireAuth, withTimeout(async (req, res) => {
+  const value = parseInt(req.body.value, 10);
+  if (isNaN(value) || value < 0) return res.status(400).json({ error: 'Invalid value' });
+  await setSetting('best_streak', value);
+  res.json({ ok: true, bestStreak: value });
+  console.log('[/admin/best-streak] Route complete, response sent');
+}));
 
 // ── POST /admin/settings ──────────────────────────────────────────────────────
 
-router.post('/admin/settings', requireAuth, async (req, res) => {
-  try {
-    const { checkin_open_hour, checkin_deadline_hour, primary_user_name } = req.body;
-    if (checkin_open_hour)     await setSetting('checkin_open_hour',     checkin_open_hour);
-    if (checkin_deadline_hour) await setSetting('checkin_deadline_hour', checkin_deadline_hour);
-    if (primary_user_name)     await setSetting('primary_user_name',     String(primary_user_name).trim());
-    res.redirect('/admin');
-  } catch (err) {
-    console.error('[POST /admin/settings]', err);
-    res.status(500).send('Server error');
-  }
-});
+router.post('/admin/settings', requireAuth, withTimeout(async (req, res) => {
+  const { checkin_open_hour, checkin_deadline_hour, primary_user_name } = req.body;
+  if (checkin_open_hour)     await setSetting('checkin_open_hour',     checkin_open_hour);
+  if (checkin_deadline_hour) await setSetting('checkin_deadline_hour', checkin_deadline_hour);
+  if (primary_user_name)     await setSetting('primary_user_name',     String(primary_user_name).trim());
+  res.redirect('/admin');
+}));
 
 // ── POST /admin/password ──────────────────────────────────────────────────────
 
-router.post('/admin/password', requireAuth, async (req, res) => {
-  try {
-    const { current_password, new_password } = req.body;
-    const stored = await getSetting('admin_password');
-    if (current_password !== stored) {
-      return res.status(401).json({ error: 'Incorrect current password' });
-    }
-    if (!new_password || new_password.length < 4) {
-      return res.status(400).json({ error: 'New password too short' });
-    }
-    await setSetting('admin_password', new_password);
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('[POST /admin/password]', err);
-    res.status(500).json({ error: 'Server error' });
+router.post('/admin/password', requireAuth, withTimeout(async (req, res) => {
+  const { current_password, new_password } = req.body;
+  const stored = await getSetting('admin_password');
+  if (current_password !== stored) {
+    return res.status(401).json({ error: 'Incorrect current password' });
   }
-});
+  if (!new_password || new_password.length < 4) {
+    return res.status(400).json({ error: 'New password too short' });
+  }
+  await setSetting('admin_password', new_password);
+  res.json({ ok: true });
+  console.log('[/admin/password] Route complete, response sent');
+}));
 
 // ── POST /admin/friends/:id/remove ───────────────────────────────────────────
 
-router.post('/admin/friends/:id/remove', requireAuth, async (req, res) => {
-  try {
-    await removeFriend(parseInt(req.params.id, 10));
-    res.redirect('/admin');
-  } catch (err) {
-    console.error('[POST /admin/friends/:id/remove]', err);
-    res.status(500).send('Server error');
-  }
-});
+router.post('/admin/friends/:id/remove', requireAuth, withTimeout(async (req, res) => {
+  await removeFriend(parseInt(req.params.id, 10));
+  res.redirect('/admin');
+}));
 
 // ── POST /admin/friends/:id/prefs ────────────────────────────────────────────
 
-router.post('/admin/friends/:id/prefs', requireAuth, async (req, res) => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    const friend = await getFriendById(id);
-    if (!friend) return res.status(404).json({ error: 'Friend not found' });
+router.post('/admin/friends/:id/prefs', requireAuth, withTimeout(async (req, res) => {
+  const id     = parseInt(req.params.id, 10);
+  const friend = await getFriendById(id);
+  if (!friend) return res.status(404).json({ error: 'Friend not found' });
 
-    const { notify_mode, digest_time, timezone, notify_success, notify_missed, notify_sms, notify_email, email } = req.body;
+  const { notify_mode, digest_time, timezone, notify_success, notify_missed, notify_sms, notify_email, email } = req.body;
 
-    const notifySuccess = notify_success === '1' || notify_success === 1 ? 1 : 0;
-    const notifyMissed  = notify_missed  === '1' || notify_missed  === 1 ? 1 : 0;
-    if (!notifySuccess && !notifyMissed) {
-      return res.status(400).json({ error: 'At least one notification type must be selected.' });
-    }
-
-    const notifySMS   = notify_sms   === '1' || notify_sms   === 1 ? 1 : 0;
-    const notifyEmail = notify_email === '1' || notify_email === 1 ? 1 : 0;
-
-    const safeEmail = email ? String(email).trim().toLowerCase().slice(0, 200) : null;
-
-    const mode = notify_mode === 'digest' ? 'digest' : 'realtime';
-    const allowedTz = TIMEZONES.map(t => t.value);
-    const safeTimezone = allowedTz.includes(timezone) ? timezone : 'America/Chicago';
-
-    let safeDigestTime = null;
-    if (mode === 'digest') {
-      if (!digest_time || !/^\d{2}:\d{2}$/.test(digest_time)) {
-        return res.status(400).json({ error: 'Invalid digest time. Use HH:MM format.' });
-      }
-      safeDigestTime = digest_time;
-    }
-
-    await updateFriendPrefs(id, {
-      notify_success: notifySuccess,
-      notify_missed:  notifyMissed,
-      notify_mode:    mode,
-      digest_time:    safeDigestTime,
-      timezone:       safeTimezone,
-      notify_sms:     notifySMS,
-      notify_email:   notifyEmail,
-      email:          safeEmail,
-    });
-
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('[POST /admin/friends/:id/prefs]', err);
-    res.status(500).json({ error: 'Server error' });
+  const notifySuccess = notify_success === '1' || notify_success === 1 ? 1 : 0;
+  const notifyMissed  = notify_missed  === '1' || notify_missed  === 1 ? 1 : 0;
+  if (!notifySuccess && !notifyMissed) {
+    return res.status(400).json({ error: 'At least one notification type must be selected.' });
   }
-});
+
+  const notifySMS    = notify_sms   === '1' || notify_sms   === 1 ? 1 : 0;
+  const notifyEmail  = notify_email === '1' || notify_email === 1 ? 1 : 0;
+  const safeEmail    = email ? String(email).trim().toLowerCase().slice(0, 200) : null;
+  const mode         = notify_mode === 'digest' ? 'digest' : 'realtime';
+  const allowedTz    = TIMEZONES.map(t => t.value);
+  const safeTimezone = allowedTz.includes(timezone) ? timezone : 'America/Chicago';
+
+  let safeDigestTime = null;
+  if (mode === 'digest') {
+    if (!digest_time || !/^\d{2}:\d{2}$/.test(digest_time)) {
+      return res.status(400).json({ error: 'Invalid digest time. Use HH:MM format.' });
+    }
+    safeDigestTime = digest_time;
+  }
+
+  await updateFriendPrefs(id, {
+    notify_success: notifySuccess,
+    notify_missed:  notifyMissed,
+    notify_mode:    mode,
+    digest_time:    safeDigestTime,
+    timezone:       safeTimezone,
+    notify_sms:     notifySMS,
+    notify_email:   notifyEmail,
+    email:          safeEmail,
+  });
+
+  res.json({ ok: true });
+  console.log('[/admin/friends/:id/prefs] Route complete, response sent');
+}));
 
 // ── POST /admin/test-sms/:id ──────────────────────────────────────────────────
 
-router.post('/admin/test-sms/:id', requireAuth, async (req, res) => {
-  try {
-    const friend = await getFriendById(parseInt(req.params.id, 10));
-    if (!friend) return res.status(404).json({ error: 'Friend not found' });
-    const name = await getSetting('primary_user_name') || 'Chip';
-    const sent = [];
-    if (friend.notify_sms !== 0 && friend.phone) {
-      await sendTestSMS(friend.phone);
-      sent.push('SMS');
-    }
-    if (friend.notify_email !== 0 && friend.email) {
-      await sendTestEmail(friend, name);
-      sent.push('email');
-    }
-    res.json({ ok: true, sent });
-  } catch (err) {
-    console.error('[POST /admin/test-sms/:id]', err);
-    res.status(500).json({ error: err.message });
+router.post('/admin/test-sms/:id', requireAuth, withTimeout(async (req, res) => {
+  const friend = await getFriendById(parseInt(req.params.id, 10));
+  if (!friend) return res.status(404).json({ error: 'Friend not found' });
+
+  const name     = await getSetting('primary_user_name') || 'Chip';
+  const willSend = [];
+  if (friend.notify_sms   !== 0 && friend.phone) willSend.push('SMS');
+  if (friend.notify_email !== 0 && friend.email) willSend.push('email');
+
+  // Respond immediately — notification sends are slow external calls
+  res.json({ ok: true, sent: willSend });
+  console.log('[/admin/test-sms] Route complete, response sent');
+
+  if (friend.notify_sms !== 0 && friend.phone) {
+    sendTestSMS(friend.phone)
+      .catch(err => console.error('[test-sms] SMS error:', err.message));
   }
-});
+  if (friend.notify_email !== 0 && friend.email) {
+    sendTestEmail(friend, name)
+      .catch(err => console.error('[test-sms] Email error:', err.message));
+  }
+}));
 
 // ── POST /admin/skip-day ──────────────────────────────────────────────────────
 
-router.post('/admin/skip-day', requireAuth, async (req, res) => {
-  try {
-    const { date } = req.body;
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return res.status(400).json({ error: 'Invalid date format' });
-    }
-    await insertCheckin(date, 'skipped');
-    // If already exists with a different status, update it
-    const existing = await getTodayCheckin(date);
-    if (existing && existing.status !== 'skipped') {
-      await updateCheckin(date, { status: 'skipped' });
-    }
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('[POST /admin/skip-day]', err);
-    res.status(500).json({ error: 'Server error' });
+router.post('/admin/skip-day', requireAuth, withTimeout(async (req, res) => {
+  const { date } = req.body;
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: 'Invalid date format' });
   }
-});
+  await insertCheckin(date, 'skipped');
+  const existing = await getTodayCheckin(date);
+  if (existing && existing.status !== 'skipped') {
+    await updateCheckin(date, { status: 'skipped' });
+  }
+  res.json({ ok: true });
+  console.log('[/admin/skip-day] Route complete, response sent');
+}));
 
 // ── POST /admin/test/open-window ─────────────────────────────────────────────
 
-router.post('/admin/test/open-window', requireAuth, async (req, res) => {
-  try {
-    const dateStr = getCTDateStr();
-    await insertCheckin(dateStr, 'pending');
-    const row = await getTodayCheckin(dateStr);
-    if (row && row.status !== 'pending') {
-      await updateCheckin(dateStr, { status: 'pending' });
-    }
-    res.json({ ok: true, message: `Today (${dateStr}) set to pending — check-in button will show on the main page.` });
-  } catch (err) {
-    console.error('[POST /admin/test/open-window]', err);
-    res.status(500).json({ error: err.message });
+router.post('/admin/test/open-window', requireAuth, withTimeout(async (req, res) => {
+  const dateStr = getCTDateStr();
+  await insertCheckin(dateStr, 'pending');
+  const row = await getTodayCheckin(dateStr);
+  if (row && row.status !== 'pending') {
+    await updateCheckin(dateStr, { status: 'pending' });
   }
-});
+  res.json({ ok: true, message: `Today (${dateStr}) set to pending — check-in button will show on the main page.` });
+  console.log('[/admin/test/open-window] Route complete, response sent');
+}));
 
 // ── POST /admin/test/simulate-missed ─────────────────────────────────────────
 
-router.post('/admin/test/simulate-missed', requireAuth, async (req, res) => {
-  try {
-    const dateStr = getCTDateStr();
-    await insertCheckin(dateStr, 'pending');
-    await updateCheckin(dateStr, { status: 'missed', streak_at_checkin: 0, selfie_url: null, checked_in_at: null });
+router.post('/admin/test/simulate-missed', requireAuth, withTimeout(async (req, res) => {
+  const dateStr = getCTDateStr();
+  await insertCheckin(dateStr, 'pending');
+  await updateCheckin(dateStr, { status: 'missed', streak_at_checkin: 0, selfie_url: null, checked_in_at: null });
 
-    const name    = await getSetting('primary_user_name') || 'Jake';
-    const friends = await getActiveFriends();
-    await broadcastShame(friends, name);
-    await broadcastShameEmail(friends, name);
+  const name    = await getSetting('primary_user_name') || 'Jake';
+  const friends = await getActiveFriends();
 
-    const smsSent   = friends.filter(f => (f.notify_mode || 'realtime') === 'realtime' && f.notify_missed !== 0 && f.notify_sms !== 0 && f.phone).length;
-    const emailSent = friends.filter(f => f.notify_email !== 0 && f.email && f.notify_missed !== 0).length;
-    res.json({ ok: true, message: `Today marked missed. Shame sent: ${smsSent} SMS, ${emailSent} email.` });
-  } catch (err) {
-    console.error('[POST /admin/test/simulate-missed]', err);
-    res.status(500).json({ error: err.message });
-  }
-});
+  const smsSent   = friends.filter(f => (f.notify_mode || 'realtime') === 'realtime' && f.notify_missed !== 0 && f.notify_sms !== 0 && f.phone).length;
+  const emailSent = friends.filter(f => f.notify_email !== 0 && f.email && f.notify_missed !== 0).length;
+
+  // DB work done — respond now, fire notifications in background
+  res.json({ ok: true, message: `Today marked missed. Sending shame to ${smsSent} SMS, ${emailSent} email in background.` });
+  console.log('[/admin/test/simulate-missed] Route complete, response sent');
+
+  broadcastShame(friends, name)
+    .catch(err => console.error('[simulate-missed] SMS shame error:', err.message));
+  broadcastShameEmail(friends, name)
+    .catch(err => console.error('[simulate-missed] Email shame error:', err.message));
+}));
 
 // ── POST /admin/test/simulate-success ────────────────────────────────────────
 
-router.post('/admin/test/simulate-success', requireAuth, async (req, res) => {
-  try {
-    const dateStr      = getCTDateStr();
-    const testSelfieUrl = 'https://placehold.co/600x600/8b0000/c8a96e/png?text=TEST+SELFIE';
+router.post('/admin/test/simulate-success', requireAuth, withTimeout(async (req, res) => {
+  const dateStr       = getCTDateStr();
+  const testSelfieUrl = 'https://placehold.co/600x600/8b0000/c8a96e/png?text=TEST+SELFIE';
 
-    await insertCheckin(dateStr, 'pending');
-    await updateCheckin(dateStr, {
-      status:        'success',
-      selfie_url:    testSelfieUrl,
-      checked_in_at: new Date().toISOString(),
-    });
+  await insertCheckin(dateStr, 'pending');
+  await updateCheckin(dateStr, {
+    status:        'success',
+    selfie_url:    testSelfieUrl,
+    checked_in_at: new Date().toISOString(),
+  });
 
-    const streak = await getCurrentStreak();
-    await updateCheckin(dateStr, { streak_at_checkin: streak });
+  const streak  = await getCurrentStreak();
+  await updateCheckin(dateStr, { streak_at_checkin: streak });
 
-    const name    = await getSetting('primary_user_name') || 'Jake';
-    const friends = await getActiveFriends();
-    await broadcastSuccess(friends, name, streak, testSelfieUrl);
-    await broadcastSuccessEmail(friends, name, testSelfieUrl, streak);
+  const name    = await getSetting('primary_user_name') || 'Jake';
+  const friends = await getActiveFriends();
 
-    const smsSent   = friends.filter(f => (f.notify_mode || 'realtime') === 'realtime' && f.notify_success !== 0 && f.notify_sms !== 0 && f.phone).length;
-    const emailSent = friends.filter(f => f.notify_email !== 0 && f.email && f.notify_success !== 0).length;
-    res.json({ ok: true, message: `Today marked success (streak: ${streak}). Sent: ${smsSent} SMS, ${emailSent} email.` });
-  } catch (err) {
-    console.error('[POST /admin/test/simulate-success]', err);
-    res.status(500).json({ error: err.message });
-  }
-});
+  const smsSent   = friends.filter(f => (f.notify_mode || 'realtime') === 'realtime' && f.notify_success !== 0 && f.notify_sms !== 0 && f.phone).length;
+  const emailSent = friends.filter(f => f.notify_email !== 0 && f.email && f.notify_success !== 0).length;
+
+  // DB work done — respond now, fire notifications in background
+  res.json({ ok: true, message: `Today marked success (streak: ${streak}). Sending to ${smsSent} SMS, ${emailSent} email in background.` });
+  console.log('[/admin/test/simulate-success] Route complete, response sent');
+
+  broadcastSuccess(friends, name, streak, testSelfieUrl)
+    .catch(err => console.error('[simulate-success] SMS broadcast error:', err.message));
+  broadcastSuccessEmail(friends, name, testSelfieUrl, streak)
+    .catch(err => console.error('[simulate-success] Email broadcast error:', err.message));
+}));
 
 // ── POST /admin/test/reset-today ─────────────────────────────────────────────
 
-router.post('/admin/test/reset-today', requireAuth, async (req, res) => {
-  try {
-    const dateStr = getCTDateStr();
-    await insertCheckin(dateStr, 'pending');
-    await updateCheckin(dateStr, {
-      status:           'pending',
-      selfie_url:       null,
-      checked_in_at:    null,
-      streak_at_checkin: null,
-      notes:            null,
-    });
-    res.json({ ok: true, message: `Today (${dateStr}) reset to pending. Ready to test again.` });
-  } catch (err) {
-    console.error('[POST /admin/test/reset-today]', err);
-    res.status(500).json({ error: err.message });
-  }
-});
+router.post('/admin/test/reset-today', requireAuth, withTimeout(async (req, res) => {
+  const dateStr = getCTDateStr();
+  await insertCheckin(dateStr, 'pending');
+  await updateCheckin(dateStr, {
+    status:            'pending',
+    selfie_url:        null,
+    checked_in_at:     null,
+    streak_at_checkin: null,
+    notes:             null,
+  });
+  res.json({ ok: true, message: `Today (${dateStr}) reset to pending. Ready to test again.` });
+  console.log('[/admin/test/reset-today] Route complete, response sent');
+}));
 
 // ── POST /admin/test/trigger-digest ──────────────────────────────────────────
 
-router.post('/admin/test/trigger-digest', requireAuth, async (req, res) => {
-  try {
-    const name         = await getSetting('primary_user_name') || 'Jake';
-    const deadlineHour = parseInt(await getSetting('checkin_deadline_hour') || '9', 10);
-    const dateStr      = getCTDateStr();
-    const todayCheckin = await getTodayCheckin(dateStr);
+router.post('/admin/test/trigger-digest', requireAuth, withTimeout(async (req, res) => {
+  const name         = await getSetting('primary_user_name') || 'Jake';
+  const deadlineHour = parseInt(await getSetting('checkin_deadline_hour') || '9', 10);
+  const dateStr      = getCTDateStr();
+  const todayCheckin = await getTodayCheckin(dateStr);
+  const digestFriends = await getDigestFriends();
 
-    const digestFriends = await getDigestFriends();
+  // DB work done — respond now, fire notifications in background
+  res.json({ ok: true, message: `Triggering digest for ${digestFriends.length} digest friend${digestFriends.length === 1 ? '' : 's'} in background.` });
+  console.log('[/admin/test/trigger-digest] Route complete, response sent');
 
-    let sent = 0;
-    for (const friend of digestFriends) {
-      try {
-        await sendDigest(friend, name, todayCheckin, deadlineHour);
-        await sendDigestEmail(friend, name, todayCheckin, deadlineHour);
-        const friendDate = DateTime.now().setZone(friend.timezone || 'America/Chicago').toFormat('yyyy-MM-dd');
-        await updateFriendDigestSent(friend.id, friendDate);
-        sent++;
-      } catch (err) {
-        console.error(`[TEST DIGEST] Failed for ${friend.phone || friend.email}:`, err.message);
-      }
-    }
-
-    res.json({ ok: true, message: `Digest triggered for ${sent} of ${digestFriends.length} digest friend${digestFriends.length === 1 ? '' : 's'}.` });
-  } catch (err) {
-    console.error('[POST /admin/test/trigger-digest]', err);
-    res.status(500).json({ error: err.message });
+  for (const friend of digestFriends) {
+    const friendDate = DateTime.now().setZone(friend.timezone || 'America/Chicago').toFormat('yyyy-MM-dd');
+    sendDigest(friend, name, todayCheckin, deadlineHour)
+      .catch(err => console.error(`[trigger-digest] SMS failed for ${friend.phone || friend.email}:`, err.message));
+    sendDigestEmail(friend, name, todayCheckin, deadlineHour)
+      .catch(err => console.error(`[trigger-digest] Email failed for ${friend.phone || friend.email}:`, err.message));
+    updateFriendDigestSent(friend.id, friendDate)
+      .catch(err => console.error(`[trigger-digest] DB update failed for friend ${friend.id}:`, err.message));
   }
-});
+}));
 
 // ── POST /admin/logout ────────────────────────────────────────────────────────
 
