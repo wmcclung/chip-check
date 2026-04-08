@@ -13,7 +13,6 @@ const TIMEZONES = [
 // ── Phone normalization ───────────────────────────────────────────────────────
 
 function normalizePhone(raw) {
-  // Strip all non-digits
   const digits = raw.replace(/\D/g, '');
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
@@ -39,44 +38,66 @@ router.get('/join', (req, res) => {
 <body>
   <div class="screen center-screen join-screen">
     <div class="join-title">JOIN THE FELLOWSHIP</div>
-    <p class="muted">Opt in to receive morning accountability updates via SMS.</p>
-    <p class="muted small">Your number is only used for notifications.</p>
+    <p class="muted">Opt in to receive morning accountability updates.</p>
 
     <form id="join-form" method="POST" action="/join">
+
+      <!-- Name -->
       <div class="form-group">
         <label for="name">First Name</label>
         <input type="text" id="name" name="name" required placeholder="Legolas" autocomplete="given-name">
       </div>
+
+      <!-- Contact info -->
       <div class="form-group">
-        <label for="phone-digits">Phone Number</label>
+        <label for="phone-digits">Phone Number <span class="muted">(optional)</span></label>
         <div class="phone-row">
           <span class="phone-prefix">+1</span>
           <input type="tel" id="phone-digits" inputmode="numeric" placeholder="(312) 555-0100" autocomplete="tel-national" maxlength="14">
         </div>
         <input type="hidden" id="phone" name="phone">
       </div>
+      <div class="form-group">
+        <label for="email">Email Address <span class="muted">(optional)</span></label>
+        <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email">
+        <small class="muted">Add at least one — phone, email, or both</small>
+      </div>
 
-      <!-- Notification Timing -->
-      <div class="select-cards-label">NOTIFICATION TIMING</div>
-      <div class="select-cards">
-        <div class="select-card selected" id="card-realtime" onclick="selectTiming('realtime')">
-          <div class="select-card-title">Real-time</div>
-          <div class="select-card-sub">Text me the moment it happens</div>
-        </div>
-        <div class="select-card" id="card-digest" onclick="selectTiming('digest')">
-          <div class="select-card-title">Pick a time</div>
-          <div class="select-card-sub" id="digest-sub">I'll get a daily status at my chosen time</div>
-          <div class="digest-opts hidden" id="digest-opts" onclick="event.stopPropagation()">
-            <input type="time" name="digest_time" id="digest_time" value="08:00">
-            <select name="timezone" id="timezone">
-            ${tzOptions}
-            </select>
+      <!-- How to notify me -->
+      <div class="select-cards-label" style="margin-top:1.2rem">HOW TO NOTIFY ME</div>
+      <div class="select-cards" id="channel-cards">
+
+        <div class="select-card selected" id="card-sms" onclick="toggleChannel('sms', event)">
+          <div class="select-card-title">📱 Text me (SMS)</div>
+          <div class="select-card-sub hidden" id="sms-sub-collapsed">As it happens or pick a time</div>
+          <div class="channel-sub-opts" id="sms-timing-opts" onclick="event.stopPropagation()">
+            <label class="channel-radio">
+              <input type="radio" name="sms_timing" value="realtime" checked> Real-time — as it happens
+            </label>
+            <label class="channel-radio">
+              <input type="radio" name="sms_timing" value="digest"> Pick a time
+            </label>
+            <div class="digest-opts hidden" id="sms-digest-opts" onclick="event.stopPropagation()">
+              <input type="time" name="digest_time" id="digest_time" value="08:00">
+              <select name="timezone" id="timezone">
+              ${tzOptions}
+              </select>
+            </div>
           </div>
         </div>
-      </div>
-      <input type="hidden" name="notify_mode" id="notify_mode_input" value="realtime">
 
-      <!-- Notify Me For -->
+        <div class="select-card" id="card-email" onclick="toggleChannel('email', event)">
+          <div class="select-card-title">📧 Email me</div>
+          <div class="select-card-sub">Delivered to your inbox</div>
+        </div>
+
+      </div>
+      <small class="muted" id="channel-error" style="color:#ff6b6b;display:none;max-width:380px;text-align:left">Select at least one notification method.</small>
+      <input type="hidden" name="notify_sms"   id="notify_sms_input"   value="1">
+      <input type="hidden" name="notify_email"  id="notify_email_input" value="0">
+      <input type="hidden" name="notify_mode"   id="notify_mode_input"  value="realtime">
+
+      <!-- Notify me for -->
       <div class="select-cards-label" style="margin-top:1.2rem">NOTIFY ME FOR</div>
       <div class="select-cards">
         <div class="select-card" id="card-success" onclick="selectNotify('success')">
@@ -99,46 +120,48 @@ router.get('/join', (req, res) => {
     </form>
   </div>
   <script>
-    // Phone — format visible input, populate hidden field on submit
-    var phoneDigits = document.getElementById('phone-digits');
-    var phoneHidden = document.getElementById('phone');
+    var phoneDigits  = document.getElementById('phone-digits');
+    var phoneHidden  = document.getElementById('phone');
+    var emailInput   = document.getElementById('email');
+    var channelError = document.getElementById('channel-error');
 
+    // Phone live-format
     phoneDigits.addEventListener('input', function() {
       var digits = this.value.replace(/\\D/g, '').slice(0, 10);
-      var formatted = '';
-      if (digits.length > 6)      formatted = '(' + digits.slice(0,3) + ') ' + digits.slice(3,6) + '-' + digits.slice(6);
-      else if (digits.length > 3) formatted = '(' + digits.slice(0,3) + ') ' + digits.slice(3);
-      else if (digits.length > 0) formatted = '(' + digits;
-      this.value = formatted;
+      var fmt = '';
+      if (digits.length > 6)      fmt = '(' + digits.slice(0,3) + ') ' + digits.slice(3,6) + '-' + digits.slice(6);
+      else if (digits.length > 3) fmt = '(' + digits.slice(0,3) + ') ' + digits.slice(3);
+      else if (digits.length > 0) fmt = '(' + digits;
+      this.value = fmt;
     });
 
-    document.getElementById('join-form').addEventListener('submit', function(e) {
-      var digits = phoneDigits.value.replace(/\\D/g, '');
-      if (digits.length !== 10) {
-        e.preventDefault();
-        phoneDigits.setCustomValidity('Enter a 10-digit US phone number.');
-        phoneDigits.reportValidity();
-        return;
-      }
-      phoneDigits.setCustomValidity('');
-      phoneHidden.value = '+1' + digits;
-    });
-
-    function selectTiming(mode) {
-      document.getElementById('card-realtime').classList.toggle('selected', mode === 'realtime');
-      document.getElementById('card-digest').classList.toggle('selected', mode === 'digest');
-      document.getElementById('notify_mode_input').value = mode;
-      var digestOpts = document.getElementById('digest-opts');
-      var digestSub  = document.getElementById('digest-sub');
-      if (mode === 'digest') {
-        digestOpts.classList.remove('hidden');
-        digestSub.classList.add('hidden');
+    // Multi-select channel cards
+    function toggleChannel(channel, e) {
+      if (channel === 'sms') {
+        var card      = document.getElementById('card-sms');
+        var isNowOn   = !card.classList.contains('selected');
+        card.classList.toggle('selected', isNowOn);
+        document.getElementById('notify_sms_input').value = isNowOn ? '1' : '0';
+        document.getElementById('sms-timing-opts').classList.toggle('hidden', !isNowOn);
+        document.getElementById('sms-sub-collapsed').classList.toggle('hidden', isNowOn);
       } else {
-        digestOpts.classList.add('hidden');
-        digestSub.classList.remove('hidden');
+        var card    = document.getElementById('card-email');
+        var isNowOn = !card.classList.contains('selected');
+        card.classList.toggle('selected', isNowOn);
+        document.getElementById('notify_email_input').value = isNowOn ? '1' : '0';
       }
+      channelError.style.display = 'none';
     }
 
+    // SMS timing radio
+    document.querySelectorAll('input[name="sms_timing"]').forEach(function(radio) {
+      radio.addEventListener('change', function() {
+        document.getElementById('notify_mode_input').value = this.value;
+        document.getElementById('sms-digest-opts').classList.toggle('hidden', this.value !== 'digest');
+      });
+    });
+
+    // NOTIFY ME FOR single-select
     function selectNotify(which) {
       document.getElementById('card-success').classList.toggle('selected', which === 'success');
       document.getElementById('card-missed').classList.toggle('selected', which === 'missed');
@@ -146,6 +169,41 @@ router.get('/join', (req, res) => {
       document.getElementById('notify_success_input').value = (which === 'success' || which === 'both') ? '1' : '0';
       document.getElementById('notify_missed_input').value  = (which === 'missed'  || which === 'both') ? '1' : '0';
     }
+
+    // Submit validation
+    document.getElementById('join-form').addEventListener('submit', function(e) {
+      var wantSMS   = document.getElementById('notify_sms_input').value === '1';
+      var wantEmail = document.getElementById('notify_email_input').value === '1';
+
+      if (!wantSMS && !wantEmail) {
+        e.preventDefault();
+        channelError.style.display = 'block';
+        return;
+      }
+
+      if (wantSMS) {
+        var digits = phoneDigits.value.replace(/\\D/g, '');
+        if (digits.length !== 10) {
+          e.preventDefault();
+          phoneDigits.setCustomValidity('Enter a 10-digit US phone number.');
+          phoneDigits.reportValidity();
+          return;
+        }
+        phoneDigits.setCustomValidity('');
+        phoneHidden.value = '+1' + digits;
+      }
+
+      if (wantEmail) {
+        var ev = emailInput.value.trim();
+        if (!ev || !ev.includes('@')) {
+          e.preventDefault();
+          emailInput.setCustomValidity('Enter a valid email address.');
+          emailInput.reportValidity();
+          return;
+        }
+        emailInput.setCustomValidity('');
+      }
+    });
   </script>
 </body>
 </html>`);
@@ -155,30 +213,51 @@ router.get('/join', (req, res) => {
 
 router.post('/join', (req, res) => {
   try {
-    const { name, phone, notify_mode, digest_time, timezone, notify_success, notify_missed } = req.body;
+    const {
+      name, phone, email,
+      notify_mode, digest_time, timezone,
+      notify_success, notify_missed,
+      notify_sms, notify_email,
+    } = req.body;
 
-    if (!name || !phone) {
-      return res.status(400).send(errorPage('Name and phone are required.'));
+    if (!name) return res.status(400).send(errorPage('Name is required.'));
+
+    const wantSMS   = notify_sms   === '1';
+    const wantEmail = notify_email === '1';
+
+    if (!wantSMS && !wantEmail) {
+      return res.status(400).send(errorPage('Select at least one notification method (SMS or email).'));
     }
 
-    const normalized = normalizePhone(phone);
-    if (!normalized) {
-      return res.status(400).send(errorPage('Could not parse phone number. Use format: +13125550100 or 10 digits.'));
+    // Phone validation (required when SMS opted in)
+    let normalizedPhone = null;
+    if (wantSMS) {
+      if (!phone) return res.status(400).send(errorPage('Phone number is required for SMS notifications.'));
+      normalizedPhone = normalizePhone(phone);
+      if (!normalizedPhone) return res.status(400).send(errorPage('Invalid phone number. Use 10 digits or +1XXXXXXXXXX.'));
     }
 
-    // Validate notify prefs
+    // Email validation (required when email opted in)
+    let safeEmail = null;
+    if (wantEmail) {
+      safeEmail = String(email || '').trim().toLowerCase().slice(0, 200);
+      if (!safeEmail || !safeEmail.includes('@') || !safeEmail.includes('.')) {
+        return res.status(400).send(errorPage('Invalid email address.'));
+      }
+    }
+
+    // Notify-for validation
     const notifySuccess = notify_success === '1' ? 1 : 0;
     const notifyMissed  = notify_missed  === '1' ? 1 : 0;
     if (!notifySuccess && !notifyMissed) {
       return res.status(400).send(errorPage('At least one notification type must be selected.'));
     }
 
+    // Digest time + timezone (only relevant for SMS digest mode)
     const mode = notify_mode === 'digest' ? 'digest' : 'realtime';
-
-    // Validate digest_time and timezone if digest mode
     let safeDigestTime = null;
     let safeTimezone   = 'America/Chicago';
-    if (mode === 'digest') {
+    if (mode === 'digest' && wantSMS) {
       if (!digest_time || !/^\d{2}:\d{2}$/.test(digest_time)) {
         return res.status(400).send(errorPage('Invalid digest time. Use HH:MM format.'));
       }
@@ -191,13 +270,20 @@ router.post('/join', (req, res) => {
     }
 
     const safeName = String(name).trim().slice(0, 50);
-    upsertFriend(safeName, normalized, {
+    upsertFriend(safeName, normalizedPhone, {
+      email:          safeEmail,
       notify_success: notifySuccess,
       notify_missed:  notifyMissed,
       notify_mode:    mode,
+      notify_sms:     wantSMS   ? 1 : 0,
+      notify_email:   wantEmail ? 1 : 0,
       digest_time:    safeDigestTime,
       timezone:       safeTimezone,
     });
+
+    const channels = [];
+    if (wantSMS)   channels.push('SMS');
+    if (wantEmail) channels.push('email');
 
     res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -211,7 +297,7 @@ router.post('/join', (req, res) => {
   <div class="screen center-screen">
     <div class="streak-number">✅</div>
     <div class="streak-label">YOU'RE IN, ${escapeHtml(safeName).toUpperCase()}!</div>
-    <p class="muted">You'll receive SMS updates when check-ins happen.</p>
+    <p class="muted">You'll receive updates via ${channels.join(' and ')} when check-ins happen.</p>
     <p class="muted small">To opt out, contact the admin.</p>
   </div>
 </body>

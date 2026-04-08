@@ -49,6 +49,14 @@ addColumnIfMissing('friends', 'notify_mode',      "TEXT DEFAULT 'realtime'");
 addColumnIfMissing('friends', 'digest_time',      'TEXT DEFAULT NULL');
 addColumnIfMissing('friends', 'timezone',         "TEXT DEFAULT 'America/Chicago'");
 addColumnIfMissing('friends', 'last_digest_sent', 'TEXT DEFAULT NULL');
+addColumnIfMissing('friends', 'notify_sms',       'INTEGER DEFAULT 1');
+addColumnIfMissing('friends', 'notify_email',     'INTEGER DEFAULT 0');
+addColumnIfMissing('friends', 'email',            'TEXT DEFAULT NULL');
+
+// Partial unique index on email — allows multiple NULLs but enforces uniqueness for real addresses
+db.prepare(
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_friends_email ON friends(email) WHERE email IS NOT NULL'
+).run();
 
 // Seed settings on first run
 const seedSetting = db.prepare(
@@ -143,19 +151,45 @@ function upsertFriend(name, phone, prefs = {}) {
     notify_mode    = 'realtime',
     digest_time    = null,
     timezone       = 'America/Chicago',
+    notify_sms     = phone ? 1 : 0,
+    notify_email   = 0,
+    email          = null,
   } = prefs;
 
-  const existing = db.prepare('SELECT * FROM friends WHERE phone = ?').get(phone);
+  // Look up existing record by phone first, then by email
+  let existing = null;
+  if (phone) existing = db.prepare('SELECT * FROM friends WHERE phone = ?').get(phone);
+  if (!existing && email) existing = db.prepare('SELECT * FROM friends WHERE email = ?').get(email);
+
   if (existing) {
     db.prepare(
-      'UPDATE friends SET active = 1, name = ?, notify_success = ?, notify_missed = ?, notify_mode = ?, digest_time = ?, timezone = ? WHERE phone = ?'
-    ).run(name, notify_success, notify_missed, notify_mode, digest_time, timezone, phone);
-    return db.prepare('SELECT * FROM friends WHERE phone = ?').get(phone);
+      `UPDATE friends SET active = 1, name = ?,
+        phone = ?, email = ?,
+        notify_success = ?, notify_missed = ?, notify_mode = ?,
+        digest_time = ?, timezone = ?, notify_sms = ?, notify_email = ?
+       WHERE id = ?`
+    ).run(
+      name,
+      phone ?? existing.phone, email ?? existing.email,
+      notify_success, notify_missed, notify_mode,
+      digest_time, timezone, notify_sms, notify_email,
+      existing.id
+    );
+    return db.prepare('SELECT * FROM friends WHERE id = ?').get(existing.id);
   }
-  db.prepare(
-    'INSERT INTO friends (name, phone, active, joined_at, notify_success, notify_missed, notify_mode, digest_time, timezone) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?)'
-  ).run(name, phone, new Date().toISOString(), notify_success, notify_missed, notify_mode, digest_time, timezone);
-  return db.prepare('SELECT * FROM friends WHERE phone = ?').get(phone);
+
+  const info = db.prepare(
+    `INSERT INTO friends
+       (name, phone, email, active, joined_at,
+        notify_success, notify_missed, notify_mode,
+        digest_time, timezone, notify_sms, notify_email)
+     VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    name, phone, email, new Date().toISOString(),
+    notify_success, notify_missed, notify_mode,
+    digest_time, timezone, notify_sms, notify_email
+  );
+  return db.prepare('SELECT * FROM friends WHERE id = ?').get(info.lastInsertRowid);
 }
 
 function updateFriendPrefs(id, prefs) {
@@ -165,10 +199,22 @@ function updateFriendPrefs(id, prefs) {
     notify_mode,
     digest_time,
     timezone,
+    notify_sms,
+    notify_email,
+    email,
   } = prefs;
   db.prepare(
-    'UPDATE friends SET notify_success = ?, notify_missed = ?, notify_mode = ?, digest_time = ?, timezone = ? WHERE id = ?'
-  ).run(notify_success, notify_missed, notify_mode, digest_time || null, timezone, id);
+    `UPDATE friends SET
+       notify_success = ?, notify_missed = ?, notify_mode = ?,
+       digest_time = ?, timezone = ?,
+       notify_sms = ?, notify_email = ?, email = ?
+     WHERE id = ?`
+  ).run(
+    notify_success, notify_missed, notify_mode,
+    digest_time || null, timezone,
+    notify_sms, notify_email, email || null,
+    id
+  );
 }
 
 function removeFriend(id) {

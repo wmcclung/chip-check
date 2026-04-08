@@ -29,7 +29,7 @@ async function sendMMS(to, body, mediaUrl) {
  */
 async function broadcastShame(friends, name) {
   const body = `❌ ${name} missed his check-in today. Streak reset to 0. Shame him accordingly.`;
-  const targets = friends.filter(f => f.notify_mode === 'realtime' && f.notify_missed !== 0);
+  const targets = friends.filter(f => f.notify_mode === 'realtime' && f.notify_missed !== 0 && f.notify_sms !== 0 && f.phone);
   for (const friend of targets) {
     try {
       await sendSMS(friend.phone, body);
@@ -45,7 +45,7 @@ async function broadcastShame(friends, name) {
  */
 async function broadcastSuccess(friends, name, streak, selfieUrl) {
   const body = `✅ ${name} checked in! Streak: ${streak} day${streak === 1 ? '' : 's'} 🔥`;
-  const targets = friends.filter(f => f.notify_mode === 'realtime' && f.notify_success !== 0);
+  const targets = friends.filter(f => f.notify_mode === 'realtime' && f.notify_success !== 0 && f.notify_sms !== 0 && f.phone);
   for (const friend of targets) {
     try {
       if (selfieUrl) {
@@ -65,6 +65,7 @@ async function broadcastSuccess(friends, name, streak, selfieUrl) {
  * deadlineHour: the configured deadline hour in CT (integer).
  */
 async function sendDigest(friend, name, todayCheckin, deadlineHour) {
+  if (!friend.phone || friend.notify_sms === 0) return;
   try {
     const ctNow = DateTime.now().setZone('America/Chicago');
     const windowOpen = ctNow.hour < deadlineHour;

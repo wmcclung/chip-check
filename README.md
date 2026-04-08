@@ -29,6 +29,8 @@ Create a `.env` file (or set in Railway dashboard):
 | `CLOUDINARY_API_SECRET` | From Cloudinary dashboard |
 | `CHECKIN_OPEN_HOUR` | CT hour check-in opens (default: `4` = 4 AM) |
 | `CHECKIN_DEADLINE_HOUR` | CT hour deadline (default: `9` = 9 AM) |
+| `GMAIL_USER` | Gmail address used to send emails (e.g. `yourname@gmail.com`) |
+| `GMAIL_APP_PASSWORD` | Gmail App Password (16-char, generated at myaccount.google.com/apppasswords) |
 
 ## Running Locally
 

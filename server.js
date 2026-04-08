@@ -18,6 +18,7 @@ const {
   db,
 } = require('./db');
 const { broadcastShame, sendDigest } = require('./sms');
+const { broadcastShameEmail, sendDigestEmail } = require('./email');
 
 const app = express();
 
@@ -107,7 +108,8 @@ cron.schedule('0 * * * *', async () => {
     const friends = getActiveFriends();
     if (friends.length > 0) {
       await broadcastShame(friends, name);
-      console.log(`[CRON DEADLINE] Shame SMS sent to ${friends.length} friends`);
+      await broadcastShameEmail(friends, name);
+      console.log(`[CRON DEADLINE] Shame notifications sent to ${friends.length} friends`);
     }
   } catch (err) {
     console.error('[CRON DEADLINE] Error:', err);
@@ -145,12 +147,13 @@ cron.schedule('*/15 * * * *', async () => {
       const friendDateStr = friendNow.toFormat('yyyy-MM-dd');
       if (friend.last_digest_sent === friendDateStr) continue;
 
-      // Send digest
+      // Send digest via SMS and/or email
       await sendDigest(friend, name, todayCheckin, deadlineHour);
+      await sendDigestEmail(friend, name, todayCheckin, deadlineHour);
 
       // Mark digest as sent for today
       db.prepare('UPDATE friends SET last_digest_sent = ? WHERE id = ?').run(friendDateStr, friend.id);
-      console.log(`[CRON DIGEST] Sent digest to ${friend.phone} (${friend.name}) at ${friend.digest_time} ${friend.timezone}`);
+      console.log(`[CRON DIGEST] Sent digest to ${friend.name} (${[friend.phone, friend.email].filter(Boolean).join(', ')})`);
     }
   } catch (err) {
     console.error('[CRON DIGEST] Error:', err);
@@ -161,6 +164,6 @@ cron.schedule('*/15 * * * *', async () => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Morning Accountability running on port ${PORT}`);
-  console.log(`Timezone: ${process.env.TZ}`);
+  console.log(`\n🏔️  Chip Check is running`);
+  console.log(`👉 http://localhost:${PORT}\n`);
 });

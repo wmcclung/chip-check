@@ -4,6 +4,7 @@ const router  = express.Router();
 
 const { uploadBuffer }     = require('../cloudinary');
 const { broadcastSuccess } = require('../sms');
+const { broadcastSuccessEmail } = require('../email');
 const {
   getSetting,
   setSetting,
@@ -134,6 +135,7 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
     const name    = getSetting('primary_user_name') || 'Jake';
     const friends = getActiveFriends();
     broadcastSuccess(friends, name, streak, selfieUrl).catch(() => {});
+    broadcastSuccessEmail(friends, name, selfieUrl, streak).catch(() => {});
 
     const quote = getSuccessQuote(streak);
     res.json({ success: true, streak, quote: `"${quote.text}" — ${quote.speaker}` });

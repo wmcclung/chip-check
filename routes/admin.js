@@ -3,6 +3,7 @@ const rateLimit   = require('express-rate-limit');
 const router      = express.Router();
 const { DateTime } = require('luxon');
 const { sendTestSMS, broadcastShame, broadcastSuccess, sendDigest } = require('../sms');
+const { sendTestEmail, broadcastSuccessEmail, broadcastShameEmail, sendDigestEmail } = require('../email');
 const {
   getSetting, setSetting,
   getCurrentStreak,
@@ -218,7 +219,7 @@ router.post('/admin/friends/:id/prefs', requireAuth, (req, res) => {
     const friend = getFriendById(id);
     if (!friend) return res.status(404).json({ error: 'Friend not found' });
 
-    const { notify_mode, digest_time, timezone, notify_success, notify_missed } = req.body;
+    const { notify_mode, digest_time, timezone, notify_success, notify_missed, notify_sms, notify_email, email } = req.body;
 
     const notifySuccess = notify_success === '1' || notify_success === 1 ? 1 : 0;
     const notifyMissed  = notify_missed  === '1' || notify_missed  === 1 ? 1 : 0;
@@ -226,8 +227,12 @@ router.post('/admin/friends/:id/prefs', requireAuth, (req, res) => {
       return res.status(400).json({ error: 'At least one notification type must be selected.' });
     }
 
-    const mode = notify_mode === 'digest' ? 'digest' : 'realtime';
+    const notifySMS   = notify_sms   === '1' || notify_sms   === 1 ? 1 : 0;
+    const notifyEmail = notify_email === '1' || notify_email === 1 ? 1 : 0;
 
+    const safeEmail = email ? String(email).trim().toLowerCase().slice(0, 200) : null;
+
+    const mode = notify_mode === 'digest' ? 'digest' : 'realtime';
     const allowedTz = TIMEZONES.map(t => t.value);
     const safeTimezone = allowedTz.includes(timezone) ? timezone : 'America/Chicago';
 
@@ -245,6 +250,9 @@ router.post('/admin/friends/:id/prefs', requireAuth, (req, res) => {
       notify_mode:    mode,
       digest_time:    safeDigestTime,
       timezone:       safeTimezone,
+      notify_sms:     notifySMS,
+      notify_email:   notifyEmail,
+      email:          safeEmail,
     });
 
     res.json({ ok: true });
@@ -260,8 +268,17 @@ router.post('/admin/test-sms/:id', requireAuth, async (req, res) => {
   try {
     const friend = getFriendById(parseInt(req.params.id, 10));
     if (!friend) return res.status(404).json({ error: 'Friend not found' });
-    await sendTestSMS(friend.phone);
-    res.json({ ok: true });
+    const name = getSetting('primary_user_name') || 'Chip';
+    const sent = [];
+    if (friend.notify_sms !== 0 && friend.phone) {
+      await sendTestSMS(friend.phone);
+      sent.push('SMS');
+    }
+    if (friend.notify_email !== 0 && friend.email) {
+      await sendTestEmail(friend, name);
+      sent.push('email');
+    }
+    res.json({ ok: true, sent });
   } catch (err) {
     console.error('[POST /admin/test-sms/:id]', err);
     res.status(500).json({ error: err.message });
@@ -317,9 +334,11 @@ router.post('/admin/test/simulate-missed', requireAuth, async (req, res) => {
     const name    = getSetting('primary_user_name') || 'Jake';
     const friends = getActiveFriends();
     await broadcastShame(friends, name);
+    await broadcastShameEmail(friends, name);
 
-    const sent = friends.filter(f => (f.notify_mode || 'realtime') === 'realtime' && f.notify_missed !== 0).length;
-    res.json({ ok: true, message: `Today marked missed. Shame SMS fired to ${sent} real-time friend${sent === 1 ? '' : 's'}.` });
+    const smsSent   = friends.filter(f => (f.notify_mode || 'realtime') === 'realtime' && f.notify_missed !== 0 && f.notify_sms !== 0 && f.phone).length;
+    const emailSent = friends.filter(f => f.notify_email !== 0 && f.email && f.notify_missed !== 0).length;
+    res.json({ ok: true, message: `Today marked missed. Shame sent: ${smsSent} SMS, ${emailSent} email.` });
   } catch (err) {
     console.error('[POST /admin/test/simulate-missed]', err);
     res.status(500).json({ error: err.message });
@@ -346,9 +365,11 @@ router.post('/admin/test/simulate-success', requireAuth, async (req, res) => {
     const name    = getSetting('primary_user_name') || 'Jake';
     const friends = getActiveFriends();
     await broadcastSuccess(friends, name, streak, testSelfieUrl);
+    await broadcastSuccessEmail(friends, name, testSelfieUrl, streak);
 
-    const sent = friends.filter(f => (f.notify_mode || 'realtime') === 'realtime' && f.notify_success !== 0).length;
-    res.json({ ok: true, message: `Today marked success (streak: ${streak}). Success MMS fired to ${sent} real-time friend${sent === 1 ? '' : 's'}.` });
+    const smsSent   = friends.filter(f => (f.notify_mode || 'realtime') === 'realtime' && f.notify_success !== 0 && f.notify_sms !== 0 && f.phone).length;
+    const emailSent = friends.filter(f => f.notify_email !== 0 && f.email && f.notify_success !== 0).length;
+    res.json({ ok: true, message: `Today marked success (streak: ${streak}). Sent: ${smsSent} SMS, ${emailSent} email.` });
   } catch (err) {
     console.error('[POST /admin/test/simulate-success]', err);
     res.status(500).json({ error: err.message });
@@ -392,11 +413,12 @@ router.post('/admin/test/trigger-digest', requireAuth, async (req, res) => {
     for (const friend of digestFriends) {
       try {
         await sendDigest(friend, name, todayCheckin, deadlineHour);
+        await sendDigestEmail(friend, name, todayCheckin, deadlineHour);
         const friendDate = DateTime.now().setZone(friend.timezone || 'America/Chicago').toFormat('yyyy-MM-dd');
         db.prepare('UPDATE friends SET last_digest_sent = ? WHERE id = ?').run(friendDate, friend.id);
         sent++;
       } catch (err) {
-        console.error(`[TEST DIGEST] Failed for ${friend.phone}:`, err.message);
+        console.error(`[TEST DIGEST] Failed for ${friend.phone || friend.email}:`, err.message);
       }
     }
 
@@ -475,6 +497,15 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
     if (f.notify_missed  !== 0) notifyFor.push('❌ Missed');
     const notifyLabel = notifyFor.length ? notifyFor.join(', ') : 'None';
 
+    const emailDisplay = f.email
+      ? escapeHtml(f.email.length > 22 ? f.email.slice(0, 22) + '…' : f.email)
+      : '—';
+
+    const channels = [];
+    if (f.notify_sms   !== 0 && f.phone) channels.push('SMS');
+    if (f.notify_email !== 0 && f.email) channels.push('Email');
+    const channelLabel = channels.length ? channels.join('+') : 'None';
+
     const prefsData = [
       `data-id="${f.id}"`,
       `data-mode="${escapeHtml(mode)}"`,
@@ -482,19 +513,24 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
       `data-timezone="${escapeHtml(f.timezone || 'America/Chicago')}"`,
       `data-notify-success="${f.notify_success !== 0 ? '1' : '0'}"`,
       `data-notify-missed="${f.notify_missed !== 0 ? '1' : '0'}"`,
+      `data-notify-sms="${f.notify_sms !== 0 ? '1' : '0'}"`,
+      `data-notify-email="${f.notify_email !== 0 ? '1' : '0'}"`,
+      `data-email="${escapeHtml(f.email || '')}"`,
     ].join(' ');
 
     return `
     <tr class="${f.active ? '' : 'inactive-row'}">
       <td>${escapeHtml(f.name)}</td>
-      <td>${escapeHtml(f.phone)}</td>
+      <td class="small">${escapeHtml(f.phone || '—')}</td>
+      <td class="small muted" title="${escapeHtml(f.email || '')}">${emailDisplay}</td>
       <td>${f.active ? '<span class="badge badge-success">active</span>' : '<span class="badge badge-missed">removed</span>'}</td>
       <td>${escapeHtml(f.joined_at ? f.joined_at.split('T')[0] : '')}</td>
+      <td class="small muted">${channelLabel}</td>
       <td class="small muted">${modeLabel}</td>
       <td class="small muted">${notifyLabel}</td>
       <td>
         ${f.active ? `
-          <button class="btn-sm" onclick="testSMS(${f.id})">Test SMS</button>
+          <button class="btn-sm" onclick="testSMS(${f.id})">Test Notify</button>
           <button class="btn-sm" onclick="editPrefs(this)" ${prefsData}>Edit Prefs</button>
           <form method="POST" action="/admin/friends/${f.id}/remove" style="display:inline">
             <button type="submit" class="btn-sm btn-danger" onclick="return confirm('Remove ${escapeHtml(f.name)}?')">Remove</button>
@@ -553,7 +589,7 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
         <p class="muted small">Share <code>/join</code> link to add new friends.</p>
         <div class="table-scroll">
           <table class="admin-table">
-            <thead><tr><th>Name</th><th>Phone</th><th>Status</th><th>Joined</th><th>Mode</th><th>Notified For</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Status</th><th>Joined</th><th>Via</th><th>Timing</th><th>Notified For</th><th>Actions</th></tr></thead>
             <tbody>${friendRows}</tbody>
           </table>
         </div>
@@ -679,7 +715,22 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
       <h3>Edit Notification Prefs</h3>
       <input type="hidden" id="prefs-id">
       <div class="form-group">
-        <label>Notification Timing</label>
+        <label>Channels</label>
+        <div class="checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="prefs-notify-sms"> 📱 SMS
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="prefs-notify-email"> 📧 Email
+          </label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Email Address</label>
+        <input type="email" id="prefs-email" placeholder="friend@example.com">
+      </div>
+      <div class="form-group">
+        <label>SMS Timing</label>
         <div class="radio-group">
           <label class="radio-label">
             <input type="radio" name="prefs-mode" value="realtime"> Real-time

@@ -100,8 +100,12 @@ function testSMS(id) {
   fetch('/admin/test-sms/' + id, { method: 'POST' })
     .then(r => r.json())
     .then(data => {
-      if (data.ok) alert('Test SMS sent!');
-      else alert('Error: ' + (data.error || 'Unknown'));
+      if (data.ok) {
+        const channels = (data.sent && data.sent.length) ? data.sent.join(' + ') : 'nothing (no active channels)';
+        alert('Test notification sent via: ' + channels);
+      } else {
+        alert('Error: ' + (data.error || 'Unknown'));
+      }
     })
     .catch(() => alert('Network error'));
 }
@@ -148,8 +152,14 @@ function editPrefs(btn) {
   const timezone      = btn.dataset.timezone   || 'America/Chicago';
   const notifySuccess = btn.dataset.notifySuccess === '1';
   const notifyMissed  = btn.dataset.notifyMissed  === '1';
+  const notifySMS     = btn.dataset.notifySms   === '1';
+  const notifyEmail   = btn.dataset.notifyEmail === '1';
+  const email         = btn.dataset.email || '';
 
   document.getElementById('prefs-id').value = id;
+  document.getElementById('prefs-notify-sms').checked   = notifySMS;
+  document.getElementById('prefs-notify-email').checked = notifyEmail;
+  document.getElementById('prefs-email').value          = email;
   document.querySelector(`input[name="prefs-mode"][value="${mode}"]`).checked = true;
   document.getElementById('prefs-digest-time').value = digestTime;
   document.getElementById('prefs-timezone').value    = timezone;
@@ -183,6 +193,9 @@ function submitPrefs() {
   const timezone      = document.getElementById('prefs-timezone').value;
   const notifySuccess = document.getElementById('prefs-notify-success').checked ? '1' : '0';
   const notifyMissed  = document.getElementById('prefs-notify-missed').checked  ? '1' : '0';
+  const notifySMS     = document.getElementById('prefs-notify-sms').checked   ? '1' : '0';
+  const notifyEmail   = document.getElementById('prefs-notify-email').checked ? '1' : '0';
+  const email         = document.getElementById('prefs-email').value.trim();
 
   if (notifySuccess === '0' && notifyMissed === '0') {
     document.getElementById('prefs-checkbox-error').style.display = 'block';
@@ -199,6 +212,9 @@ function submitPrefs() {
       timezone:       timezone,
       notify_success: notifySuccess,
       notify_missed:  notifyMissed,
+      notify_sms:     notifySMS,
+      notify_email:   notifyEmail,
+      email:          email,
     }),
   })
     .then(r => r.json())
