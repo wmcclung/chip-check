@@ -64,13 +64,15 @@ router.get('/join', (req, res) => {
       </div>
 
       <!-- How to notify me -->
-      <div class="select-cards-label" style="margin-top:1.2rem">HOW TO NOTIFY ME</div>
+      <div class="select-cards-label" style="margin-top:1.2rem">NOTIFY ME VIA — pick one or both</div>
+      <p class="channel-hint muted">You can select both if you want redundant notifications</p>
       <div class="select-cards" id="channel-cards">
 
-        <div class="select-card selected" id="card-sms" onclick="toggleChannel('sms', event)">
+        <div class="select-card channel-card channel-pulse" id="card-sms" onclick="toggleChannel('sms', event)">
+          <span class="card-check" id="sms-check"></span>
           <div class="select-card-title">📱 Text me (SMS)</div>
-          <div class="select-card-sub hidden" id="sms-sub-collapsed">As it happens or pick a time</div>
-          <div class="channel-sub-opts" id="sms-timing-opts" onclick="event.stopPropagation()">
+          <div class="select-card-sub" id="sms-sub-collapsed">As it happens or pick a time</div>
+          <div class="channel-sub-opts hidden" id="sms-timing-opts" onclick="event.stopPropagation()">
             <label class="channel-radio">
               <input type="radio" name="sms_timing" value="realtime" checked> Real-time — as it happens
             </label>
@@ -86,14 +88,16 @@ router.get('/join', (req, res) => {
           </div>
         </div>
 
-        <div class="select-card" id="card-email" onclick="toggleChannel('email', event)">
+        <div class="select-card channel-card channel-pulse" id="card-email" onclick="toggleChannel('email', event)">
+          <span class="card-check" id="email-check"></span>
           <div class="select-card-title">📧 Email me</div>
-          <div class="select-card-sub">Delivered to your inbox</div>
+          <div class="select-card-sub">Get notified by email — works great alongside SMS</div>
         </div>
 
       </div>
+      <div class="both-channel-msg hidden" id="both-channel-msg">📬 You'll receive both SMS and email notifications</div>
       <small class="muted" id="channel-error" style="color:#ff6b6b;display:none;max-width:380px;text-align:left">Select at least one notification method.</small>
-      <input type="hidden" name="notify_sms"   id="notify_sms_input"   value="1">
+      <input type="hidden" name="notify_sms"   id="notify_sms_input"   value="0">
       <input type="hidden" name="notify_email"  id="notify_email_input" value="0">
       <input type="hidden" name="notify_mode"   id="notify_mode_input"  value="realtime">
 
@@ -125,6 +129,12 @@ router.get('/join', (req, res) => {
     var emailInput   = document.getElementById('email');
     var channelError = document.getElementById('channel-error');
 
+    // Remove pulse after 2s
+    setTimeout(function() {
+      document.getElementById('card-sms').classList.remove('channel-pulse');
+      document.getElementById('card-email').classList.remove('channel-pulse');
+    }, 2100);
+
     // Phone live-format
     phoneDigits.addEventListener('input', function() {
       var digits = this.value.replace(/\\D/g, '').slice(0, 10);
@@ -138,8 +148,8 @@ router.get('/join', (req, res) => {
     // Multi-select channel cards
     function toggleChannel(channel, e) {
       if (channel === 'sms') {
-        var card      = document.getElementById('card-sms');
-        var isNowOn   = !card.classList.contains('selected');
+        var card    = document.getElementById('card-sms');
+        var isNowOn = !card.classList.contains('selected');
         card.classList.toggle('selected', isNowOn);
         document.getElementById('notify_sms_input').value = isNowOn ? '1' : '0';
         document.getElementById('sms-timing-opts').classList.toggle('hidden', !isNowOn);
@@ -150,6 +160,10 @@ router.get('/join', (req, res) => {
         card.classList.toggle('selected', isNowOn);
         document.getElementById('notify_email_input').value = isNowOn ? '1' : '0';
       }
+      // Both-selected confirmation
+      var smsOn   = document.getElementById('notify_sms_input').value === '1';
+      var emailOn = document.getElementById('notify_email_input').value === '1';
+      document.getElementById('both-channel-msg').classList.toggle('hidden', !(smsOn && emailOn));
       channelError.style.display = 'none';
     }
 

@@ -13,7 +13,7 @@ const {
   getCurrentStreak,
   getActiveFriends,
 } = require('../db');
-const { getSuccessQuote, getFailureQuote } = require('../quotes');
+const { getSuccessQuote, getFailureQuote, getMilestone } = require('../quotes');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -73,16 +73,16 @@ router.get('/', (req, res) => {
       screen = 'pending';
     }
 
-    const successQuote = getSuccessQuote(streak);
-    const failureQuote = getFailureQuote();
-    const isMilestone  = [5, 10, 20, 30, 50, 100].includes(streak);
-    const selfieUrl    = checkin && checkin.selfie_url ? checkin.selfie_url : null;
-    const bestStreak   = parseInt(getSetting('best_streak') || '0', 10);
+    const milestoneData = getMilestone(streak);
+    const successQuote  = getSuccessQuote(streak);
+    const failureQuote  = getFailureQuote();
+    const selfieUrl     = checkin && checkin.selfie_url ? checkin.selfie_url : null;
+    const bestStreak    = parseInt(getSetting('best_streak') || '0', 10);
 
     res.send(renderCheckinPage({
       screen, name, streak, bestStreak, timeStr, dateDisplay,
       openHour, deadlineHour,
-      successQuote, failureQuote, isMilestone,
+      successQuote, failureQuote, milestoneData,
       selfieUrl,
     }));
   } catch (err) {
@@ -150,7 +150,7 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
 function renderCheckinPage(data) {
   const { screen, name, streak, bestStreak, timeStr, dateDisplay,
           openHour, deadlineHour, successQuote, failureQuote,
-          isMilestone, selfieUrl } = data;
+          milestoneData, selfieUrl } = data;
 
   let bodyContent = '';
 
@@ -183,11 +183,20 @@ function renderCheckinPage(data) {
         <div class="spinner"></div>
       </div>`;
   } else if (screen === 'success') {
-    const milestoneClass = isMilestone ? 'milestone' : '';
+    const milestoneClass = milestoneData ? `milestone ${milestoneData.cssClass}` : '';
     const isNewRecord    = streak > 0 && streak === bestStreak;
+    const celebOverlay   = milestoneData && (milestoneData.bigMoment || milestoneData.bigCelebration)
+      ? `<div id="milestone-overlay" data-type="${milestoneData.bigCelebration ? '100' : '30'}" class="milestone-overlay ${milestoneData.cssClass}-overlay">
+          ${milestoneData.bigCelebration ? `<div class="moverlay-badge">${escapeHtml(milestoneData.badge)}</div>` : ''}
+          <div class="moverlay-quote">"${escapeHtml(milestoneData.text)}"</div>
+          <div class="moverlay-cite">— ${escapeHtml(milestoneData.speaker)}</div>
+          <div class="moverlay-tap">tap to continue</div>
+        </div>`
+      : '';
     bodyContent = `
+      ${celebOverlay}
       <div class="screen center-screen">
-        ${isMilestone ? '<div class="milestone-badge">🏆</div>' : ''}
+        ${milestoneData ? `<div class="milestone-badge ${milestoneData.cssClass}-badge">${escapeHtml(milestoneData.badge)}</div>` : ''}
         <div class="streak-number ${milestoneClass}">🔥 ${streak}</div>
         <div class="streak-label">DAY ${streak} COMPLETE</div>
         <div class="streak-stats">

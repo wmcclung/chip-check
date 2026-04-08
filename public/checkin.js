@@ -1,5 +1,21 @@
 /* Frontend JS for the primary check-in flow */
 
+// ── Milestone celebration overlay ─────────────────────────────────────────────
+(function () {
+  var overlay = document.getElementById('milestone-overlay');
+  if (!overlay) return;
+  var type     = overlay.dataset.type;
+  var duration = type === '100' ? 5000 : 3000;
+
+  function dismissOverlay() {
+    overlay.classList.add('milestone-overlay--fade');
+    setTimeout(function () { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 700);
+  }
+
+  setTimeout(dismissOverlay, duration);
+  overlay.addEventListener('click', dismissOverlay);
+})();
+
 (function () {
   const checkinBtn = document.getElementById('checkin-btn');
   if (!checkinBtn) return; // not on a screen with a checkin button
