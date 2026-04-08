@@ -36,14 +36,14 @@ function getCTDate() {
 
 // ── GET / ─────────────────────────────────────────────────────────────────────
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const { dateStr, hour } = getCTDate();
-    const openHour     = parseInt(getSetting('checkin_open_hour')     || '4',  10);
-    const deadlineHour = parseInt(getSetting('checkin_deadline_hour') || '9',  10);
-    const name         = getSetting('primary_user_name') || 'Jake';
-    const streak       = getCurrentStreak();
-    const checkin      = getTodayCheckin(dateStr);
+    const openHour     = parseInt(await getSetting('checkin_open_hour')     || '4',  10);
+    const deadlineHour = parseInt(await getSetting('checkin_deadline_hour') || '9',  10);
+    const name         = await getSetting('primary_user_name') || 'Jake';
+    const streak       = await getCurrentStreak();
+    const checkin      = await getTodayCheckin(dateStr);
     const status       = checkin ? checkin.status : null;
 
     // Format current CT time for display
@@ -77,7 +77,7 @@ router.get('/', (req, res) => {
     const successQuote  = getSuccessQuote(streak);
     const failureQuote  = getFailureQuote();
     const selfieUrl     = checkin && checkin.selfie_url ? checkin.selfie_url : null;
-    const bestStreak    = parseInt(getSetting('best_streak') || '0', 10);
+    const bestStreak    = parseInt(await getSetting('best_streak') || '0', 10);
 
     res.send(renderCheckinPage({
       screen, name, streak, bestStreak, timeStr, dateDisplay,
@@ -96,15 +96,15 @@ router.get('/', (req, res) => {
 router.post('/checkin', upload.single('selfie'), async (req, res) => {
   try {
     const { dateStr, hour } = getCTDate();
-    const openHour     = parseInt(getSetting('checkin_open_hour')     || '4',  10);
-    const deadlineHour = parseInt(getSetting('checkin_deadline_hour') || '9',  10);
+    const openHour     = parseInt(await getSetting('checkin_open_hour')     || '4',  10);
+    const deadlineHour = parseInt(await getSetting('checkin_deadline_hour') || '9',  10);
 
     // Validate time window
     if (hour < openHour || hour >= deadlineHour) {
       return res.status(400).json({ success: false, error: 'Check-in window is not open.' });
     }
 
-    const checkin = getTodayCheckin(dateStr);
+    const checkin = await getTodayCheckin(dateStr);
     if (!checkin || !['pending', 'skipped'].includes(checkin.status)) {
       return res.status(400).json({ success: false, error: 'Cannot check in right now.' });
     }
@@ -118,22 +118,22 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
 
     // Mark success
     const now = new Date().toISOString();
-    updateCheckin(dateStr, {
+    await updateCheckin(dateStr, {
       status:       'success',
       selfie_url:   selfieUrl,
       checked_in_at: now,
     });
 
-    const streak = getCurrentStreak();
-    updateCheckin(dateStr, { streak_at_checkin: streak });
+    const streak = await getCurrentStreak();
+    await updateCheckin(dateStr, { streak_at_checkin: streak });
 
     // Update best streak if this is a new record
-    const prevBest = parseInt(getSetting('best_streak') || '0', 10);
-    if (streak > prevBest) setSetting('best_streak', streak);
+    const prevBest = parseInt(await getSetting('best_streak') || '0', 10);
+    if (streak > prevBest) await setSetting('best_streak', streak);
 
     // Broadcast success MMS (errors logged, not thrown)
-    const name    = getSetting('primary_user_name') || 'Jake';
-    const friends = getActiveFriends();
+    const name    = await getSetting('primary_user_name') || 'Jake';
+    const friends = await getActiveFriends();
     broadcastSuccess(friends, name, streak, selfieUrl).catch(() => {});
     broadcastSuccessEmail(friends, name, selfieUrl, streak).catch(() => {});
 

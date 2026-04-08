@@ -13,10 +13,12 @@ const {
   insertCheckin,
   getActiveFriends,
   getAllFriends,
+  getDigestFriends,
+  getLastResolvedCheckin,
   removeFriend,
   getFriendById,
   updateFriendPrefs,
-  db,
+  updateFriendDigestSent,
 } = require('../db');
 
 const TIMEZONES = [
@@ -61,9 +63,9 @@ router.get('/admin/login', (req, res) => {
 
 // ── POST /admin/login ─────────────────────────────────────────────────────────
 
-router.post('/admin/login', loginLimiter, (req, res) => {
+router.post('/admin/login', loginLimiter, async (req, res) => {
   const { password } = req.body;
-  const stored = getSetting('admin_password');
+  const stored = await getSetting('admin_password');
   if (password === stored) {
     req.session.admin = true;
     return res.redirect('/admin');
@@ -73,12 +75,12 @@ router.post('/admin/login', loginLimiter, (req, res) => {
 
 // ── GET /admin ────────────────────────────────────────────────────────────────
 
-router.get('/admin', requireAuth, (req, res) => {
+router.get('/admin', requireAuth, async (req, res) => {
   try {
-    const name    = getSetting('primary_user_name') || 'Jake';
-    const streak  = getCurrentStreak();
-    const openHour     = getSetting('checkin_open_hour')     || '4';
-    const deadlineHour = getSetting('checkin_deadline_hour') || '9';
+    const name    = await getSetting('primary_user_name') || 'Jake';
+    const streak  = await getCurrentStreak();
+    const openHour     = await getSetting('checkin_open_hour')     || '4';
+    const deadlineHour = await getSetting('checkin_deadline_hour') || '9';
 
     // Today's info
     const now = new Date();
@@ -89,11 +91,11 @@ router.get('/admin', requireAuth, (req, res) => {
       String(ctNow.getDate()).padStart(2, '0'),
     ].join('-');
 
-    const today   = getTodayCheckin(dateStr);
-    const history = getRecentCheckins(30);
-    const friends = getAllFriends();
+    const today   = await getTodayCheckin(dateStr);
+    const history = await getRecentCheckins(30);
+    const friends = await getAllFriends();
 
-    const bestStreak = parseInt(getSetting('best_streak') || '0', 10);
+    const bestStreak = parseInt(await getSetting('best_streak') || '0', 10);
 
     res.send(adminDashboard({
       name, streak, bestStreak, today, history, friends,
@@ -107,18 +109,18 @@ router.get('/admin', requireAuth, (req, res) => {
 
 // ── POST /admin/day ───────────────────────────────────────────────────────────
 
-router.post('/admin/day', requireAuth, (req, res) => {
+router.post('/admin/day', requireAuth, async (req, res) => {
   try {
     const { date, status, notes } = req.body;
     if (!date || !status) return res.status(400).json({ error: 'date and status required' });
 
-    updateCheckin(date, { status, notes: notes || null });
+    await updateCheckin(date, { status, notes: notes || null });
 
     // Recompute streak for the most recent resolved row
-    const streak = getCurrentStreak();
+    const streak = await getCurrentStreak();
     // Update streak_at_checkin for this row if it's resolved
     if (['success', 'missed', 'skipped'].includes(status)) {
-      updateCheckin(date, { streak_at_checkin: status === 'missed' ? 0 : streak });
+      await updateCheckin(date, { streak_at_checkin: status === 'missed' ? 0 : streak });
     }
 
     res.json({ ok: true, streak });
@@ -130,19 +132,15 @@ router.post('/admin/day', requireAuth, (req, res) => {
 
 // ── POST /admin/streak ────────────────────────────────────────────────────────
 
-router.post('/admin/streak', requireAuth, (req, res) => {
+router.post('/admin/streak', requireAuth, async (req, res) => {
   try {
     const value = parseInt(req.body.value, 10);
     if (isNaN(value) || value < 0) return res.status(400).json({ error: 'Invalid value' });
 
-    // Update the most recent resolved row's streak_at_checkin
-    const row = db.prepare(
-      "SELECT date FROM checkins WHERE status IN ('success','missed','skipped') ORDER BY date DESC LIMIT 1"
-    ).get();
-
+    const row = await getLastResolvedCheckin();
     if (!row) return res.status(404).json({ error: 'No resolved checkin found' });
 
-    updateCheckin(row.date, { streak_at_checkin: value });
+    await updateCheckin(row.date, { streak_at_checkin: value });
     res.json({ ok: true, date: row.date, streak: value });
   } catch (err) {
     console.error('[POST /admin/streak]', err);
@@ -152,11 +150,11 @@ router.post('/admin/streak', requireAuth, (req, res) => {
 
 // ── POST /admin/best-streak ───────────────────────────────────────────────────
 
-router.post('/admin/best-streak', requireAuth, (req, res) => {
+router.post('/admin/best-streak', requireAuth, async (req, res) => {
   try {
     const value = parseInt(req.body.value, 10);
     if (isNaN(value) || value < 0) return res.status(400).json({ error: 'Invalid value' });
-    setSetting('best_streak', value);
+    await setSetting('best_streak', value);
     res.json({ ok: true, bestStreak: value });
   } catch (err) {
     console.error('[POST /admin/best-streak]', err);
@@ -166,12 +164,12 @@ router.post('/admin/best-streak', requireAuth, (req, res) => {
 
 // ── POST /admin/settings ──────────────────────────────────────────────────────
 
-router.post('/admin/settings', requireAuth, (req, res) => {
+router.post('/admin/settings', requireAuth, async (req, res) => {
   try {
     const { checkin_open_hour, checkin_deadline_hour, primary_user_name } = req.body;
-    if (checkin_open_hour)     setSetting('checkin_open_hour',     checkin_open_hour);
-    if (checkin_deadline_hour) setSetting('checkin_deadline_hour', checkin_deadline_hour);
-    if (primary_user_name)     setSetting('primary_user_name',     String(primary_user_name).trim());
+    if (checkin_open_hour)     await setSetting('checkin_open_hour',     checkin_open_hour);
+    if (checkin_deadline_hour) await setSetting('checkin_deadline_hour', checkin_deadline_hour);
+    if (primary_user_name)     await setSetting('primary_user_name',     String(primary_user_name).trim());
     res.redirect('/admin');
   } catch (err) {
     console.error('[POST /admin/settings]', err);
@@ -181,17 +179,17 @@ router.post('/admin/settings', requireAuth, (req, res) => {
 
 // ── POST /admin/password ──────────────────────────────────────────────────────
 
-router.post('/admin/password', requireAuth, (req, res) => {
+router.post('/admin/password', requireAuth, async (req, res) => {
   try {
     const { current_password, new_password } = req.body;
-    const stored = getSetting('admin_password');
+    const stored = await getSetting('admin_password');
     if (current_password !== stored) {
       return res.status(401).json({ error: 'Incorrect current password' });
     }
     if (!new_password || new_password.length < 4) {
       return res.status(400).json({ error: 'New password too short' });
     }
-    setSetting('admin_password', new_password);
+    await setSetting('admin_password', new_password);
     res.json({ ok: true });
   } catch (err) {
     console.error('[POST /admin/password]', err);
@@ -201,9 +199,9 @@ router.post('/admin/password', requireAuth, (req, res) => {
 
 // ── POST /admin/friends/:id/remove ───────────────────────────────────────────
 
-router.post('/admin/friends/:id/remove', requireAuth, (req, res) => {
+router.post('/admin/friends/:id/remove', requireAuth, async (req, res) => {
   try {
-    removeFriend(parseInt(req.params.id, 10));
+    await removeFriend(parseInt(req.params.id, 10));
     res.redirect('/admin');
   } catch (err) {
     console.error('[POST /admin/friends/:id/remove]', err);
@@ -213,10 +211,10 @@ router.post('/admin/friends/:id/remove', requireAuth, (req, res) => {
 
 // ── POST /admin/friends/:id/prefs ────────────────────────────────────────────
 
-router.post('/admin/friends/:id/prefs', requireAuth, (req, res) => {
+router.post('/admin/friends/:id/prefs', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const friend = getFriendById(id);
+    const friend = await getFriendById(id);
     if (!friend) return res.status(404).json({ error: 'Friend not found' });
 
     const { notify_mode, digest_time, timezone, notify_success, notify_missed, notify_sms, notify_email, email } = req.body;
@@ -244,7 +242,7 @@ router.post('/admin/friends/:id/prefs', requireAuth, (req, res) => {
       safeDigestTime = digest_time;
     }
 
-    updateFriendPrefs(id, {
+    await updateFriendPrefs(id, {
       notify_success: notifySuccess,
       notify_missed:  notifyMissed,
       notify_mode:    mode,
@@ -266,9 +264,9 @@ router.post('/admin/friends/:id/prefs', requireAuth, (req, res) => {
 
 router.post('/admin/test-sms/:id', requireAuth, async (req, res) => {
   try {
-    const friend = getFriendById(parseInt(req.params.id, 10));
+    const friend = await getFriendById(parseInt(req.params.id, 10));
     if (!friend) return res.status(404).json({ error: 'Friend not found' });
-    const name = getSetting('primary_user_name') || 'Chip';
+    const name = await getSetting('primary_user_name') || 'Chip';
     const sent = [];
     if (friend.notify_sms !== 0 && friend.phone) {
       await sendTestSMS(friend.phone);
@@ -287,17 +285,17 @@ router.post('/admin/test-sms/:id', requireAuth, async (req, res) => {
 
 // ── POST /admin/skip-day ──────────────────────────────────────────────────────
 
-router.post('/admin/skip-day', requireAuth, (req, res) => {
+router.post('/admin/skip-day', requireAuth, async (req, res) => {
   try {
     const { date } = req.body;
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ error: 'Invalid date format' });
     }
-    insertCheckin(date, 'skipped');
+    await insertCheckin(date, 'skipped');
     // If already exists with a different status, update it
-    const existing = getTodayCheckin(date);
+    const existing = await getTodayCheckin(date);
     if (existing && existing.status !== 'skipped') {
-      updateCheckin(date, { status: 'skipped' });
+      await updateCheckin(date, { status: 'skipped' });
     }
     res.json({ ok: true });
   } catch (err) {
@@ -308,13 +306,13 @@ router.post('/admin/skip-day', requireAuth, (req, res) => {
 
 // ── POST /admin/test/open-window ─────────────────────────────────────────────
 
-router.post('/admin/test/open-window', requireAuth, (req, res) => {
+router.post('/admin/test/open-window', requireAuth, async (req, res) => {
   try {
     const dateStr = getCTDateStr();
-    insertCheckin(dateStr, 'pending');
-    const row = getTodayCheckin(dateStr);
+    await insertCheckin(dateStr, 'pending');
+    const row = await getTodayCheckin(dateStr);
     if (row && row.status !== 'pending') {
-      updateCheckin(dateStr, { status: 'pending' });
+      await updateCheckin(dateStr, { status: 'pending' });
     }
     res.json({ ok: true, message: `Today (${dateStr}) set to pending — check-in button will show on the main page.` });
   } catch (err) {
@@ -328,11 +326,11 @@ router.post('/admin/test/open-window', requireAuth, (req, res) => {
 router.post('/admin/test/simulate-missed', requireAuth, async (req, res) => {
   try {
     const dateStr = getCTDateStr();
-    insertCheckin(dateStr, 'pending');
-    updateCheckin(dateStr, { status: 'missed', streak_at_checkin: 0, selfie_url: null, checked_in_at: null });
+    await insertCheckin(dateStr, 'pending');
+    await updateCheckin(dateStr, { status: 'missed', streak_at_checkin: 0, selfie_url: null, checked_in_at: null });
 
-    const name    = getSetting('primary_user_name') || 'Jake';
-    const friends = getActiveFriends();
+    const name    = await getSetting('primary_user_name') || 'Jake';
+    const friends = await getActiveFriends();
     await broadcastShame(friends, name);
     await broadcastShameEmail(friends, name);
 
@@ -352,18 +350,18 @@ router.post('/admin/test/simulate-success', requireAuth, async (req, res) => {
     const dateStr      = getCTDateStr();
     const testSelfieUrl = 'https://placehold.co/600x600/8b0000/c8a96e/png?text=TEST+SELFIE';
 
-    insertCheckin(dateStr, 'pending');
-    updateCheckin(dateStr, {
+    await insertCheckin(dateStr, 'pending');
+    await updateCheckin(dateStr, {
       status:        'success',
       selfie_url:    testSelfieUrl,
       checked_in_at: new Date().toISOString(),
     });
 
-    const streak = getCurrentStreak();
-    updateCheckin(dateStr, { streak_at_checkin: streak });
+    const streak = await getCurrentStreak();
+    await updateCheckin(dateStr, { streak_at_checkin: streak });
 
-    const name    = getSetting('primary_user_name') || 'Jake';
-    const friends = getActiveFriends();
+    const name    = await getSetting('primary_user_name') || 'Jake';
+    const friends = await getActiveFriends();
     await broadcastSuccess(friends, name, streak, testSelfieUrl);
     await broadcastSuccessEmail(friends, name, testSelfieUrl, streak);
 
@@ -378,11 +376,11 @@ router.post('/admin/test/simulate-success', requireAuth, async (req, res) => {
 
 // ── POST /admin/test/reset-today ─────────────────────────────────────────────
 
-router.post('/admin/test/reset-today', requireAuth, (req, res) => {
+router.post('/admin/test/reset-today', requireAuth, async (req, res) => {
   try {
     const dateStr = getCTDateStr();
-    insertCheckin(dateStr, 'pending');
-    updateCheckin(dateStr, {
+    await insertCheckin(dateStr, 'pending');
+    await updateCheckin(dateStr, {
       status:           'pending',
       selfie_url:       null,
       checked_in_at:    null,
@@ -400,14 +398,12 @@ router.post('/admin/test/reset-today', requireAuth, (req, res) => {
 
 router.post('/admin/test/trigger-digest', requireAuth, async (req, res) => {
   try {
-    const name         = getSetting('primary_user_name') || 'Jake';
-    const deadlineHour = parseInt(getSetting('checkin_deadline_hour') || '9', 10);
+    const name         = await getSetting('primary_user_name') || 'Jake';
+    const deadlineHour = parseInt(await getSetting('checkin_deadline_hour') || '9', 10);
     const dateStr      = getCTDateStr();
-    const todayCheckin = getTodayCheckin(dateStr);
+    const todayCheckin = await getTodayCheckin(dateStr);
 
-    const digestFriends = db.prepare(
-      "SELECT * FROM friends WHERE active = 1 AND notify_mode = 'digest'"
-    ).all();
+    const digestFriends = await getDigestFriends();
 
     let sent = 0;
     for (const friend of digestFriends) {
@@ -415,7 +411,7 @@ router.post('/admin/test/trigger-digest', requireAuth, async (req, res) => {
         await sendDigest(friend, name, todayCheckin, deadlineHour);
         await sendDigestEmail(friend, name, todayCheckin, deadlineHour);
         const friendDate = DateTime.now().setZone(friend.timezone || 'America/Chicago').toFormat('yyyy-MM-dd');
-        db.prepare('UPDATE friends SET last_digest_sent = ? WHERE id = ?').run(friendDate, friend.id);
+        await updateFriendDigestSent(friend.id, friendDate);
         sent++;
       } catch (err) {
         console.error(`[TEST DIGEST] Failed for ${friend.phone || friend.email}:`, err.message);

@@ -225,7 +225,7 @@ router.get('/join', (req, res) => {
 
 // ── POST /join ────────────────────────────────────────────────────────────────
 
-router.post('/join', (req, res) => {
+router.post('/join', async (req, res) => {
   try {
     const {
       name, phone, email,
@@ -284,7 +284,7 @@ router.post('/join', (req, res) => {
     }
 
     const safeName = String(name).trim().slice(0, 50);
-    upsertFriend(safeName, normalizedPhone, {
+    await upsertFriend(safeName, normalizedPhone, {
       email:          safeEmail,
       notify_success: notifySuccess,
       notify_missed:  notifyMissed,

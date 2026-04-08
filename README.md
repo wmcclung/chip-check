@@ -18,6 +18,7 @@ Create a `.env` file (or set in Railway dashboard):
 | Variable | Description |
 |---|---|
 | `PORT` | Server port (default: 3000) |
+| `DATABASE_URL` | PostgreSQL connection string (e.g. from Railway) |
 | `TZ` | Must be `America/Chicago` |
 | `ADMIN_PASSWORD` | Password for `/admin` |
 | `PRIMARY_USER_NAME` | Name shown in SMS messages (e.g. `Jake`) |
@@ -38,6 +39,7 @@ Create a `.env` file (or set in Railway dashboard):
 cd morning-accountability
 npm install
 # Fill in .env with your credentials
+# Set DATABASE_URL to your Railway Postgres connection string
 node server.js
 ```
 

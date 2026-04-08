@@ -1,82 +1,102 @@
-const Database = require('better-sqlite3');
-const path = require('path');
-const fs = require('fs');
+const { Pool } = require('pg');
 
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
 
-const db = new Database(path.join(dataDir, 'db.sqlite'));
+// ── Schema & migrations ───────────────────────────────────────────────────────
 
-db.pragma('journal_mode = WAL');
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS settings (
-    key   TEXT PRIMARY KEY,
-    value TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS checkins (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    date              TEXT UNIQUE,
-    status            TEXT DEFAULT 'pending',
-    selfie_url        TEXT,
-    checked_in_at     TEXT,
-    streak_at_checkin INTEGER,
-    notes             TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS friends (
-    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    name      TEXT,
-    phone     TEXT UNIQUE,
-    active    INTEGER DEFAULT 1,
-    joined_at TEXT
-  );
-`);
-
-// ── Migrate friends table: add notification preference columns ─────────────────
-
-function addColumnIfMissing(table, col, definition) {
-  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
-  if (!cols.find(c => c.name === col)) {
-    db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${definition}`).run();
-  }
+async function addColumnIfMissing(table, col, definition) {
+  // Postgres 9.6+ supports ADD COLUMN IF NOT EXISTS
+  await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${col} ${definition}`);
 }
 
-addColumnIfMissing('friends', 'notify_success',   'INTEGER DEFAULT 1');
-addColumnIfMissing('friends', 'notify_missed',    'INTEGER DEFAULT 1');
-addColumnIfMissing('friends', 'notify_mode',      "TEXT DEFAULT 'realtime'");
-addColumnIfMissing('friends', 'digest_time',      'TEXT DEFAULT NULL');
-addColumnIfMissing('friends', 'timezone',         "TEXT DEFAULT 'America/Chicago'");
-addColumnIfMissing('friends', 'last_digest_sent', 'TEXT DEFAULT NULL');
-addColumnIfMissing('friends', 'notify_sms',       'INTEGER DEFAULT 1');
-addColumnIfMissing('friends', 'notify_email',     'INTEGER DEFAULT 0');
-addColumnIfMissing('friends', 'email',            'TEXT DEFAULT NULL');
+async function init() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT
+    )
+  `);
 
-// Partial unique index on email — allows multiple NULLs but enforces uniqueness for real addresses
-db.prepare(
-  'CREATE UNIQUE INDEX IF NOT EXISTS idx_friends_email ON friends(email) WHERE email IS NOT NULL'
-).run();
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS checkins (
+      id                SERIAL PRIMARY KEY,
+      date              TEXT UNIQUE,
+      status            TEXT DEFAULT 'pending',
+      selfie_url        TEXT,
+      checked_in_at     TEXT,
+      streak_at_checkin INTEGER,
+      notes             TEXT
+    )
+  `);
 
-// Seed settings on first run
-const seedSetting = db.prepare(
-  'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)'
-);
-seedSetting.run('checkin_open_hour', process.env.CHECKIN_OPEN_HOUR || '4');
-seedSetting.run('checkin_deadline_hour', process.env.CHECKIN_DEADLINE_HOUR || '9');
-seedSetting.run('primary_user_name', process.env.PRIMARY_USER_NAME || 'Jake');
-seedSetting.run('admin_password', process.env.ADMIN_PASSWORD || 'changeme');
-seedSetting.run('best_streak', '0');
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS friends (
+      id               SERIAL PRIMARY KEY,
+      name             TEXT,
+      phone            TEXT UNIQUE,
+      active           INTEGER DEFAULT 1,
+      joined_at        TEXT,
+      notify_success   INTEGER DEFAULT 1,
+      notify_missed    INTEGER DEFAULT 1,
+      notify_mode      TEXT DEFAULT 'realtime',
+      digest_time      TEXT DEFAULT NULL,
+      timezone         TEXT DEFAULT 'America/Chicago',
+      last_digest_sent TEXT DEFAULT NULL,
+      notify_sms       INTEGER DEFAULT 1,
+      notify_email     INTEGER DEFAULT 0,
+      email            TEXT DEFAULT NULL
+    )
+  `);
+
+  // Partial unique index — allows multiple NULLs, enforces uniqueness for real addresses
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_friends_email ON friends(email) WHERE email IS NOT NULL
+  `);
+
+  // Safe column migrations for databases that may predate the notification columns
+  await addColumnIfMissing('friends', 'notify_success',   'INTEGER DEFAULT 1');
+  await addColumnIfMissing('friends', 'notify_missed',    'INTEGER DEFAULT 1');
+  await addColumnIfMissing('friends', 'notify_mode',      "TEXT DEFAULT 'realtime'");
+  await addColumnIfMissing('friends', 'digest_time',      'TEXT DEFAULT NULL');
+  await addColumnIfMissing('friends', 'timezone',         "TEXT DEFAULT 'America/Chicago'");
+  await addColumnIfMissing('friends', 'last_digest_sent', 'TEXT DEFAULT NULL');
+  await addColumnIfMissing('friends', 'notify_sms',       'INTEGER DEFAULT 1');
+  await addColumnIfMissing('friends', 'notify_email',     'INTEGER DEFAULT 0');
+  await addColumnIfMissing('friends', 'email',            'TEXT DEFAULT NULL');
+
+  // Seed default settings (do nothing if they already exist)
+  const seeds = [
+    ['checkin_open_hour',    process.env.CHECKIN_OPEN_HOUR    || '4'],
+    ['checkin_deadline_hour', process.env.CHECKIN_DEADLINE_HOUR || '9'],
+    ['primary_user_name',    process.env.PRIMARY_USER_NAME    || 'Jake'],
+    ['admin_password',       process.env.ADMIN_PASSWORD       || 'changeme'],
+    ['best_streak',          '0'],
+  ];
+  for (const [key, value] of seeds) {
+    await pool.query(
+      'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING',
+      [key, value]
+    );
+  }
+
+  console.log('[DB] Initialized');
+}
 
 // ── Settings helpers ──────────────────────────────────────────────────────────
 
-function getSetting(key) {
-  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
-  return row ? row.value : null;
+async function getSetting(key) {
+  const result = await pool.query('SELECT value FROM settings WHERE key = $1', [key]);
+  return result.rows[0] ? result.rows[0].value : null;
 }
 
-function setSetting(key, value) {
-  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, String(value));
+async function setSetting(key, value) {
+  await pool.query(
+    'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value',
+    [key, String(value)]
+  );
 }
 
 // ── Streak logic ──────────────────────────────────────────────────────────────
@@ -86,17 +106,17 @@ function setSetting(key, value) {
  * 'pending' days are skipped over (don't count, don't break).
  * 'missed' days break the streak.
  */
-function getCurrentStreak() {
-  const rows = db
-    .prepare("SELECT date, status FROM checkins ORDER BY date DESC")
-    .all();
+async function getCurrentStreak() {
+  const result = await pool.query(
+    "SELECT date, status FROM checkins ORDER BY date DESC"
+  );
+  const rows = result.rows;
 
   let streak = 0;
   for (const row of rows) {
     if (row.status === 'success') {
       streak++;
     } else if (row.status === 'skipped') {
-      // skipped days don't add to streak but don't break it either
       continue;
     } else if (row.status === 'missed') {
       break;
@@ -110,41 +130,64 @@ function getCurrentStreak() {
 
 // ── Checkin helpers ───────────────────────────────────────────────────────────
 
-function getTodayCheckin(dateStr) {
-  return db.prepare('SELECT * FROM checkins WHERE date = ?').get(dateStr);
+async function getTodayCheckin(dateStr) {
+  const result = await pool.query('SELECT * FROM checkins WHERE date = $1', [dateStr]);
+  return result.rows[0] || null;
 }
 
-function getRecentCheckins(limit = 30) {
-  return db
-    .prepare('SELECT * FROM checkins ORDER BY date DESC LIMIT ?')
-    .all(limit);
+async function getRecentCheckins(limit = 30) {
+  const result = await pool.query(
+    'SELECT * FROM checkins ORDER BY date DESC LIMIT $1',
+    [limit]
+  );
+  return result.rows;
 }
 
-function insertCheckin(dateStr, status) {
-  db.prepare(
-    'INSERT OR IGNORE INTO checkins (date, status) VALUES (?, ?)'
-  ).run(dateStr, status);
+async function insertCheckin(dateStr, status) {
+  await pool.query(
+    'INSERT INTO checkins (date, status) VALUES ($1, $2) ON CONFLICT (date) DO NOTHING',
+    [dateStr, status]
+  );
 }
 
-function updateCheckin(dateStr, fields) {
+async function updateCheckin(dateStr, fields) {
   const keys = Object.keys(fields);
-  const setClause = keys.map(k => `${k} = ?`).join(', ');
+  const setClause = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
   const values = keys.map(k => fields[k]);
   values.push(dateStr);
-  db.prepare(`UPDATE checkins SET ${setClause} WHERE date = ?`).run(...values);
+  await pool.query(
+    `UPDATE checkins SET ${setClause} WHERE date = $${keys.length + 1}`,
+    values
+  );
+}
+
+async function getLastResolvedCheckin() {
+  const result = await pool.query(
+    "SELECT date FROM checkins WHERE status IN ('success','missed','skipped') ORDER BY date DESC LIMIT 1"
+  );
+  return result.rows[0] || null;
 }
 
 // ── Friends helpers ───────────────────────────────────────────────────────────
 
-function getActiveFriends() {
-  return db.prepare('SELECT * FROM friends WHERE active = 1').all();
+async function getActiveFriends() {
+  const result = await pool.query('SELECT * FROM friends WHERE active = 1');
+  return result.rows;
 }
 
-function getAllFriends() {
-  return db.prepare('SELECT * FROM friends ORDER BY joined_at DESC').all();
+async function getAllFriends() {
+  const result = await pool.query('SELECT * FROM friends ORDER BY joined_at DESC');
+  return result.rows;
 }
 
-function upsertFriend(name, phone, prefs = {}) {
+async function getDigestFriends() {
+  const result = await pool.query(
+    "SELECT * FROM friends WHERE active = 1 AND notify_mode = 'digest'"
+  );
+  return result.rows;
+}
+
+async function upsertFriend(name, phone, prefs = {}) {
   const {
     notify_success = 1,
     notify_missed  = 1,
@@ -158,41 +201,51 @@ function upsertFriend(name, phone, prefs = {}) {
 
   // Look up existing record by phone first, then by email
   let existing = null;
-  if (phone) existing = db.prepare('SELECT * FROM friends WHERE phone = ?').get(phone);
-  if (!existing && email) existing = db.prepare('SELECT * FROM friends WHERE email = ?').get(email);
-
-  if (existing) {
-    db.prepare(
-      `UPDATE friends SET active = 1, name = ?,
-        phone = ?, email = ?,
-        notify_success = ?, notify_missed = ?, notify_mode = ?,
-        digest_time = ?, timezone = ?, notify_sms = ?, notify_email = ?
-       WHERE id = ?`
-    ).run(
-      name,
-      phone ?? existing.phone, email ?? existing.email,
-      notify_success, notify_missed, notify_mode,
-      digest_time, timezone, notify_sms, notify_email,
-      existing.id
-    );
-    return db.prepare('SELECT * FROM friends WHERE id = ?').get(existing.id);
+  if (phone) {
+    const r = await pool.query('SELECT * FROM friends WHERE phone = $1', [phone]);
+    existing = r.rows[0] || null;
+  }
+  if (!existing && email) {
+    const r = await pool.query('SELECT * FROM friends WHERE email = $1', [email]);
+    existing = r.rows[0] || null;
   }
 
-  const info = db.prepare(
+  if (existing) {
+    await pool.query(
+      `UPDATE friends SET active = 1, name = $1,
+         phone = $2, email = $3,
+         notify_success = $4, notify_missed = $5, notify_mode = $6,
+         digest_time = $7, timezone = $8, notify_sms = $9, notify_email = $10
+       WHERE id = $11`,
+      [
+        name,
+        phone ?? existing.phone, email ?? existing.email,
+        notify_success, notify_missed, notify_mode,
+        digest_time, timezone, notify_sms, notify_email,
+        existing.id,
+      ]
+    );
+    const r = await pool.query('SELECT * FROM friends WHERE id = $1', [existing.id]);
+    return r.rows[0];
+  }
+
+  const r = await pool.query(
     `INSERT INTO friends
        (name, phone, email, active, joined_at,
         notify_success, notify_missed, notify_mode,
         digest_time, timezone, notify_sms, notify_email)
-     VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    name, phone, email, new Date().toISOString(),
-    notify_success, notify_missed, notify_mode,
-    digest_time, timezone, notify_sms, notify_email
+     VALUES ($1, $2, $3, 1, $4, $5, $6, $7, $8, $9, $10, $11)
+     RETURNING *`,
+    [
+      name, phone, email, new Date().toISOString(),
+      notify_success, notify_missed, notify_mode,
+      digest_time, timezone, notify_sms, notify_email,
+    ]
   );
-  return db.prepare('SELECT * FROM friends WHERE id = ?').get(info.lastInsertRowid);
+  return r.rows[0];
 }
 
-function updateFriendPrefs(id, prefs) {
+async function updateFriendPrefs(id, prefs) {
   const {
     notify_success,
     notify_missed,
@@ -203,30 +256,37 @@ function updateFriendPrefs(id, prefs) {
     notify_email,
     email,
   } = prefs;
-  db.prepare(
+  await pool.query(
     `UPDATE friends SET
-       notify_success = ?, notify_missed = ?, notify_mode = ?,
-       digest_time = ?, timezone = ?,
-       notify_sms = ?, notify_email = ?, email = ?
-     WHERE id = ?`
-  ).run(
-    notify_success, notify_missed, notify_mode,
-    digest_time || null, timezone,
-    notify_sms, notify_email, email || null,
-    id
+       notify_success = $1, notify_missed = $2, notify_mode = $3,
+       digest_time = $4, timezone = $5,
+       notify_sms = $6, notify_email = $7, email = $8
+     WHERE id = $9`,
+    [
+      notify_success, notify_missed, notify_mode,
+      digest_time || null, timezone,
+      notify_sms, notify_email, email || null,
+      id,
+    ]
   );
 }
 
-function removeFriend(id) {
-  db.prepare('UPDATE friends SET active = 0 WHERE id = ?').run(id);
+async function updateFriendDigestSent(id, dateStr) {
+  await pool.query('UPDATE friends SET last_digest_sent = $1 WHERE id = $2', [dateStr, id]);
 }
 
-function getFriendById(id) {
-  return db.prepare('SELECT * FROM friends WHERE id = ?').get(id);
+async function removeFriend(id) {
+  await pool.query('UPDATE friends SET active = 0 WHERE id = $1', [id]);
+}
+
+async function getFriendById(id) {
+  const result = await pool.query('SELECT * FROM friends WHERE id = $1', [id]);
+  return result.rows[0] || null;
 }
 
 module.exports = {
-  db,
+  pool,
+  init,
   getSetting,
   setSetting,
   getCurrentStreak,
@@ -234,10 +294,13 @@ module.exports = {
   getRecentCheckins,
   insertCheckin,
   updateCheckin,
+  getLastResolvedCheckin,
   getActiveFriends,
   getAllFriends,
+  getDigestFriends,
   upsertFriend,
   updateFriendPrefs,
+  updateFriendDigestSent,
   removeFriend,
   getFriendById,
 };
