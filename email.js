@@ -4,14 +4,12 @@ const { getSuccessQuote, getFailureQuote } = require('./quotes');
 
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
+  port: 587,
+  secure: false,
+  requireTLS: true,
   auth: {
     user: process.env.GMAIL_USER,
     pass: process.env.GMAIL_APP_PASSWORD,
-  },
-  tls: {
-    rejectUnauthorized: false,
   },
 });
 
@@ -61,6 +59,9 @@ function emailHtml(bodyHtml) {
 }
 
 async function send(to, subject, html) {
+  console.log('[EMAIL] Attempting send to:', to);
+  console.log('[EMAIL] GMAIL_USER set:', !!process.env.GMAIL_USER);
+  console.log('[EMAIL] GMAIL_APP_PASSWORD set:', !!process.env.GMAIL_APP_PASSWORD);
   try {
     const result = await transporter.sendMail({ from: FROM(), to, subject, html });
     console.log('[EMAIL] Sent successfully to', to, 'MessageId:', result.messageId);

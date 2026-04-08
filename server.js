@@ -160,9 +160,10 @@ async function start() {
 
   transporter.verify((error, success) => {
     if (error) {
-      console.error('[EMAIL] Transporter verification failed:', error.message);
+      console.error('[EMAIL] SMTP connection failed:', error.message);
+      console.error('[EMAIL] Full error:', JSON.stringify(error));
     } else {
-      console.log('[EMAIL] Transporter ready');
+      console.log('[EMAIL] SMTP connection verified and ready');
     }
   });
 
