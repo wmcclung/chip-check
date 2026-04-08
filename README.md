@@ -30,8 +30,8 @@ Create a `.env` file (or set in Railway dashboard):
 | `CLOUDINARY_API_SECRET` | From Cloudinary dashboard |
 | `CHECKIN_OPEN_HOUR` | CT hour check-in opens (default: `4` = 4 AM) |
 | `CHECKIN_DEADLINE_HOUR` | CT hour deadline (default: `9` = 9 AM) |
-| `EMAIL_USER` | Email address used to send notifications (e.g. `yourname@privateemail.com`) |
-| `EMAIL_PASSWORD` | Password for the email account |
+| `RESEND_API_KEY` | API key from [resend.com](https://resend.com) |
+| `RESEND_FROM_EMAIL` | Verified sender address (e.g. `noreply@yourdomain.com`) |
 
 ## Running Locally
 

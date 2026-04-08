@@ -1,28 +1,9 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const { DateTime } = require('luxon');
 const { getSuccessQuote, getFailureQuote } = require('./quotes');
 
-const transporter = nodemailer.createTransport({
-  host: 'mail.privateemail.com',
-  port: 587,
-  secure: false,
-  requireTLS: true,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD,
-  },
-});
-
-const FROM = () => process.env.EMAIL_USER;
-
-function sendWithTimeout(mailOptions, timeoutMs = 10000) {
-  return Promise.race([
-    transporter.sendMail(mailOptions),
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Email send timed out after ' + timeoutMs + 'ms')), timeoutMs)
-    ),
-  ]);
-}
+const resend = new Resend(process.env.RESEND_API_KEY);
+const FROM = process.env.RESEND_FROM_EMAIL;
 
 // ── HTML email shell ──────────────────────────────────────────────────────────
 
@@ -69,12 +50,16 @@ function emailHtml(bodyHtml) {
 
 async function send(to, subject, html) {
   console.log('[EMAIL] Attempting send to:', to);
-  console.log('[EMAIL] GMAIL_USER set:', !!process.env.GMAIL_USER);
-  console.log('[EMAIL] GMAIL_APP_PASSWORD set:', !!process.env.GMAIL_APP_PASSWORD);
+  console.log('[EMAIL] RESEND_API_KEY set:', !!process.env.RESEND_API_KEY);
+  console.log('[EMAIL] RESEND_FROM_EMAIL set:', !!process.env.RESEND_FROM_EMAIL);
   try {
-    const result = await sendWithTimeout({ from: FROM(), to, subject, html });
-    console.log('[EMAIL] Sent successfully to', to, 'MessageId:', result.messageId);
-    return result;
+    const { data, error } = await resend.emails.send({ from: FROM, to, subject, html });
+    if (error) {
+      console.error('[EMAIL] Send failed to', to, ':', error.message || JSON.stringify(error));
+      throw new Error(error.message || JSON.stringify(error));
+    }
+    console.log('[EMAIL] Sent successfully to', to, 'ID:', data.id);
+    return data;
   } catch (err) {
     console.error('[EMAIL] Send failed to', to, ':', err.message);
     throw err;
@@ -101,7 +86,7 @@ async function sendSuccessEmail(friend, name, selfieUrl, streak) {
   try {
     await send(friend.email, `✅ ${name} checked in! Streak: ${streak} day${streak === 1 ? '' : 's'} 🔥`, html);
   } catch (err) {
-    console.error(`[Email] Failed to send success to ${friend.email}:`, err.message);
+    console.error(`[EMAIL] Failed to send success to ${friend.email}:`, err.message);
   }
 }
 
@@ -119,7 +104,7 @@ async function sendMissedEmail(friend, name) {
   try {
     await send(friend.email, `❌ ${name} missed his check-in today`, html);
   } catch (err) {
-    console.error(`[Email] Failed to send missed to ${friend.email}:`, err.message);
+    console.error(`[EMAIL] Failed to send missed to ${friend.email}:`, err.message);
   }
 }
 
@@ -129,7 +114,11 @@ async function sendTestEmail(friend, name) {
     <h1>👋 You're opted in!</h1>
     <p>This is a test email from Chip Check. You'll receive updates when ${name} checks in.</p>
   `);
-  return send(friend.email, '👋 Test email from Chip Check', html);
+  try {
+    await send(friend.email, '👋 Test email from Chip Check', html);
+  } catch (err) {
+    console.error(`[EMAIL] Failed to send test to ${friend.email}:`, err.message);
+  }
 }
 
 async function sendDigestEmail(friend, name, todayCheckin, deadlineHour) {
@@ -148,7 +137,7 @@ async function sendDigestEmail(friend, name, todayCheckin, deadlineHour) {
       try {
         await send(friend.email, `⏳ ${name} hasn't checked in yet — deadline ${deadlineLabel} CT`, html);
       } catch (err) {
-        console.error(`[Email] Failed to send digest to ${friend.email}:`, err.message);
+        console.error(`[EMAIL] Failed to send digest to ${friend.email}:`, err.message);
       }
     } else if (friend.notify_missed !== 0) {
       await sendMissedEmail(friend, name);
@@ -185,7 +174,6 @@ async function broadcastShameEmail(friends, name) {
 }
 
 module.exports = {
-  transporter,
   sendSuccessEmail,
   sendMissedEmail,
   sendTestEmail,

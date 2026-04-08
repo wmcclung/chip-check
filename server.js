@@ -20,7 +20,7 @@ const {
   updateFriendDigestSent,
 } = require('./db');
 const { broadcastShame, sendDigest } = require('./sms');
-const { broadcastShameEmail, sendDigestEmail, transporter } = require('./email');
+const { broadcastShameEmail, sendDigestEmail } = require('./email');
 
 const app = express();
 
@@ -158,18 +158,8 @@ const PORT = process.env.PORT || 3000;
 async function start() {
   await initDB();
 
-  const verifyTimeout = setTimeout(() => {
-    console.error('[EMAIL] transporter.verify() timed out after 10s — Railway may be blocking outbound SMTP');
-  }, 10000);
-  transporter.verify((error, success) => {
-    clearTimeout(verifyTimeout);
-    if (error) {
-      console.error('[EMAIL] SMTP connection failed:', error.message);
-      console.error('[EMAIL] Full error:', JSON.stringify(error));
-    } else {
-      console.log('[EMAIL] SMTP connection verified and ready');
-    }
-  });
+  console.log('[EMAIL] Resend configured:', !!process.env.RESEND_API_KEY);
+  console.log('[EMAIL] From address:', process.env.RESEND_FROM_EMAIL || 'NOT SET');
 
   app.listen(PORT, () => {
     console.log(`\n🏔️  Chip Check is running`);
