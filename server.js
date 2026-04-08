@@ -158,7 +158,11 @@ const PORT = process.env.PORT || 3000;
 async function start() {
   await initDB();
 
+  const verifyTimeout = setTimeout(() => {
+    console.error('[EMAIL] transporter.verify() timed out after 10s — Railway may be blocking outbound SMTP');
+  }, 10000);
   transporter.verify((error, success) => {
+    clearTimeout(verifyTimeout);
     if (error) {
       console.error('[EMAIL] SMTP connection failed:', error.message);
       console.error('[EMAIL] Full error:', JSON.stringify(error));

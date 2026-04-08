@@ -15,6 +15,15 @@ const transporter = nodemailer.createTransport({
 
 const FROM = () => process.env.GMAIL_USER;
 
+function sendWithTimeout(mailOptions, timeoutMs = 10000) {
+  return Promise.race([
+    transporter.sendMail(mailOptions),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Email send timed out after ' + timeoutMs + 'ms')), timeoutMs)
+    ),
+  ]);
+}
+
 // ── HTML email shell ──────────────────────────────────────────────────────────
 
 function emailHtml(bodyHtml) {
@@ -63,11 +72,11 @@ async function send(to, subject, html) {
   console.log('[EMAIL] GMAIL_USER set:', !!process.env.GMAIL_USER);
   console.log('[EMAIL] GMAIL_APP_PASSWORD set:', !!process.env.GMAIL_APP_PASSWORD);
   try {
-    const result = await transporter.sendMail({ from: FROM(), to, subject, html });
+    const result = await sendWithTimeout({ from: FROM(), to, subject, html });
     console.log('[EMAIL] Sent successfully to', to, 'MessageId:', result.messageId);
     return result;
   } catch (err) {
-    console.error('[EMAIL] Failed to send to', to, ':', err.message);
+    console.error('[EMAIL] Send failed to', to, ':', err.message);
     throw err;
   }
 }
