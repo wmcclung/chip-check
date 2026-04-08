@@ -3,10 +3,15 @@ const { DateTime } = require('luxon');
 const { getSuccessQuote, getFailureQuote } = require('./quotes');
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
   auth: {
     user: process.env.GMAIL_USER,
     pass: process.env.GMAIL_APP_PASSWORD,
+  },
+  tls: {
+    rejectUnauthorized: false,
   },
 });
 
@@ -56,7 +61,14 @@ function emailHtml(bodyHtml) {
 }
 
 async function send(to, subject, html) {
-  return transporter.sendMail({ from: FROM(), to, subject, html });
+  try {
+    const result = await transporter.sendMail({ from: FROM(), to, subject, html });
+    console.log('[EMAIL] Sent successfully to', to, 'MessageId:', result.messageId);
+    return result;
+  } catch (err) {
+    console.error('[EMAIL] Failed to send to', to, ':', err.message);
+    throw err;
+  }
 }
 
 // ── Single-friend senders ─────────────────────────────────────────────────────
@@ -163,6 +175,7 @@ async function broadcastShameEmail(friends, name) {
 }
 
 module.exports = {
+  transporter,
   sendSuccessEmail,
   sendMissedEmail,
   sendTestEmail,

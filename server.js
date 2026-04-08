@@ -20,7 +20,7 @@ const {
   updateFriendDigestSent,
 } = require('./db');
 const { broadcastShame, sendDigest } = require('./sms');
-const { broadcastShameEmail, sendDigestEmail } = require('./email');
+const { broadcastShameEmail, sendDigestEmail, transporter } = require('./email');
 
 const app = express();
 
@@ -157,6 +157,15 @@ const PORT = process.env.PORT || 3000;
 
 async function start() {
   await initDB();
+
+  transporter.verify((error, success) => {
+    if (error) {
+      console.error('[EMAIL] Transporter verification failed:', error.message);
+    } else {
+      console.log('[EMAIL] Transporter ready');
+    }
+  });
+
   app.listen(PORT, () => {
     console.log(`\n🏔️  Chip Check is running`);
     console.log(`👉 http://localhost:${PORT}\n`);

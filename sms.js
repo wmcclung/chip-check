@@ -1,6 +1,8 @@
 const twilio = require('twilio');
 const { DateTime } = require('luxon');
 
+console.log('[SMS] Twilio configured with number:', process.env.TWILIO_PHONE_NUMBER ? 'set' : 'MISSING');
+
 function getClient() {
   return twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 }
@@ -12,7 +14,14 @@ const FROM = () => process.env.TWILIO_PHONE_NUMBER;
  */
 async function sendSMS(to, body) {
   const client = getClient();
-  return client.messages.create({ from: FROM(), to, body });
+  try {
+    const result = await client.messages.create({ from: FROM(), to, body });
+    console.log('[SMS] Sent successfully to', to, 'SID:', result.sid);
+    return result;
+  } catch (err) {
+    console.error('[SMS] Failed to send to', to, ':', err.message, 'Code:', err.code);
+    throw err;
+  }
 }
 
 /**
@@ -20,7 +29,14 @@ async function sendSMS(to, body) {
  */
 async function sendMMS(to, body, mediaUrl) {
   const client = getClient();
-  return client.messages.create({ from: FROM(), to, body, mediaUrl: [mediaUrl] });
+  try {
+    const result = await client.messages.create({ from: FROM(), to, body, mediaUrl: [mediaUrl] });
+    console.log('[SMS] MMS sent successfully to', to, 'SID:', result.sid);
+    return result;
+  } catch (err) {
+    console.error('[SMS] Failed to send MMS to', to, ':', err.message, 'Code:', err.code);
+    throw err;
+  }
 }
 
 /**
