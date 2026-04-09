@@ -25,9 +25,9 @@ function emailHtml(bodyHtml) {
   .streak-block { text-align:center; margin:24px 0; }
   .streak-num { font-family:'Arial Black',Impact,sans-serif; font-size:3.5rem; color:#c8a96e; line-height:1; }
   .streak-label { color:#8a6e3e; font-size:0.8rem; letter-spacing:0.2em; text-transform:uppercase; margin-top:6px; }
-  .quote-block { border-top:1px solid #8a6e3e; border-bottom:1px solid #8a6e3e; padding:14px 20px; margin:24px 0; background:rgba(200,169,110,0.05); border-radius:4px; }
-  .quote-text { font-style:italic; color:#c8a96e; margin:0 0 8px; }
-  .quote-cite { font-size:0.82rem; color:#8a6e3e; font-style:normal; }
+  .verse-block { border-left:3px solid #8a6e3e; padding:12px 18px; margin:24px 0; background:rgba(200,169,110,0.05); border-radius:0 4px 4px 0; }
+  .verse-text { font-style:italic; color:#c8a96e; margin:0 0 8px; }
+  .verse-cite { font-size:0.82rem; color:#8a6e3e; font-style:normal; }
   .shame-box { background:rgba(139,0,0,0.2); border:1px solid #8b0000; padding:16px 20px; border-radius:4px; margin:24px 0; }
   .shame-box p { color:#f0e8d8; margin:0; }
   .checkin-time-email { font-size:1.1rem; color:#c8a96e; margin:0 0 16px; }
@@ -89,9 +89,9 @@ async function sendSuccessEmail(friend, name, selfieUrl, streak, extras = {}) {
       <div class="milestone-unlock-box">
         <div class="milestone-unlock-label">🏅 MILESTONE UNLOCKED</div>
         <div class="milestone-unlock-badge">${tm.badge}</div>
-        <div class="quote-block" style="margin-top:0.75rem">
-          <p class="quote-text">"${tm.text}"</p>
-          <p class="quote-cite">— ${tm.speaker}</p>
+        <div class="verse-block" style="margin-top:0.75rem">
+          <p class="verse-text">"${tm.text}"</p>
+          <p class="verse-cite">— ${tm.speaker}</p>
         </div>
       </div>`;
   }
@@ -121,9 +121,9 @@ async function sendSuccessEmail(friend, name, selfieUrl, streak, extras = {}) {
   const html = emailHtml(`
     <h1>✅ ${name} checked in!</h1>
     ${checkinTime ? `<p class="checkin-time-email">Today: <strong>${checkinTime}</strong></p>` : ''}
-    <div class="quote-block">
-      <p class="quote-text">"${quote.text}"</p>
-      <p class="quote-cite">— ${quote.speaker}</p>
+    <div class="verse-block">
+      <p class="verse-text">"${quote.text}"</p>
+      <p class="verse-cite">— ${quote.speaker}</p>
     </div>
     ${selfieUrl ? `<img class="selfie" src="${selfieUrl}" alt="Today's selfie">` : ''}
     <div class="streak-block">
@@ -159,9 +159,9 @@ async function sendMissedEmail(friend, name, missStats = null) {
 
   const html = emailHtml(`
     <h1>❌ ${name} missed his check-in today.</h1>
-    <div class="quote-block">
-      <p class="quote-text">"${quote.text}"</p>
-      <p class="quote-cite">— ${quote.speaker}</p>
+    <div class="verse-block">
+      <p class="verse-text">"${quote.text}"</p>
+      <p class="verse-cite">— ${quote.speaker}</p>
     </div>
     <div class="shame-box"><p>Streak reset to 0. Shame him accordingly.</p></div>
     ${missStatsSection}
