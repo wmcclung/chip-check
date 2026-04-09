@@ -25,7 +25,7 @@ function emailHtml(bodyHtml) {
   .streak-block { text-align:center; margin:24px 0; }
   .streak-num { font-family:'Arial Black',Impact,sans-serif; font-size:3.5rem; color:#c8a96e; line-height:1; }
   .streak-label { color:#8a6e3e; font-size:0.8rem; letter-spacing:0.2em; text-transform:uppercase; margin-top:6px; }
-  .quote-block { border-left:3px solid #8a6e3e; padding:12px 18px; margin:24px 0; background:rgba(200,169,110,0.05); border-radius:0 4px 4px 0; }
+  .quote-block { border-top:1px solid #8a6e3e; border-bottom:1px solid #8a6e3e; padding:14px 20px; margin:24px 0; background:rgba(200,169,110,0.05); border-radius:4px; }
   .quote-text { font-style:italic; color:#c8a96e; margin:0 0 8px; }
   .quote-cite { font-size:0.82rem; color:#8a6e3e; font-style:normal; }
   .shame-box { background:rgba(139,0,0,0.2); border:1px solid #8b0000; padding:16px 20px; border-radius:4px; margin:24px 0; }
