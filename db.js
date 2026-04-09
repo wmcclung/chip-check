@@ -104,15 +104,17 @@ async function init() {
 
   // Seed today's check-in for 2026-04-09 (safe to run multiple times)
   await pool.query(
-    `INSERT INTO checkins (date, status, checked_in_at, checkin_time, checkin_minutes, quote_text, quote_speaker)
+    `INSERT INTO checkins (date, status, checked_in_at, checkin_time, checkin_minutes, quote_text, quote_speaker, selfie_url)
      VALUES ('2026-04-09', 'success', '2026-04-09T08:37:00', '8:37 AM', 517,
        'All we have to decide is what to do with the time that is given us.',
-       'Gandalf')
+       'Gandalf',
+       'https://res.cloudinary.com/dqny3plza/image/upload/v1775741864/morning-accountability/rdol3b8argi6n2qo1exc.jpg')
      ON CONFLICT (date) DO UPDATE SET
        checkin_time    = COALESCE(checkins.checkin_time,    EXCLUDED.checkin_time),
        checkin_minutes = COALESCE(checkins.checkin_minutes, EXCLUDED.checkin_minutes),
        quote_text      = COALESCE(checkins.quote_text,      EXCLUDED.quote_text),
-       quote_speaker   = COALESCE(checkins.quote_speaker,   EXCLUDED.quote_speaker)`
+       quote_speaker   = COALESCE(checkins.quote_speaker,   EXCLUDED.quote_speaker),
+       selfie_url      = COALESCE(NULLIF(checkins.selfie_url, ''), EXCLUDED.selfie_url)`
   );
 
   console.log('[DB] Initialized');

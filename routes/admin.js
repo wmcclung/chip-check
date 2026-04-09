@@ -326,20 +326,16 @@ router.post('/admin/test/open-window', requireAuth, withTimeout(async (req, res)
 }));
 
 // ── POST /admin/test/simulate-missed ─────────────────────────────────────────
+// Sends shame notifications WITHOUT modifying the database.
 
 router.post('/admin/test/simulate-missed', requireAuth, withTimeout(async (req, res) => {
-  const dateStr = getCTDateStr();
-  await insertCheckin(dateStr, 'pending');
-  await updateCheckin(dateStr, { status: 'missed', streak_at_checkin: 0, selfie_url: null, checked_in_at: null });
-
   const name    = await getSetting('primary_user_name') || 'Jake';
   const friends = await getActiveFriends();
 
   const smsSent   = friends.filter(f => (f.notify_mode || 'realtime') === 'realtime' && f.notify_missed !== 0 && f.notify_sms !== 0 && f.phone).length;
   const emailSent = friends.filter(f => f.notify_email !== 0 && f.email && f.notify_missed !== 0).length;
 
-  // DB work done — respond now, fire notifications in background
-  res.json({ ok: true, message: `Today marked missed. Sending shame to ${smsSent} SMS, ${emailSent} email in background.` });
+  res.json({ ok: true, message: `Sending shame notifications to ${smsSent} SMS, ${emailSent} email in background. No data was changed.` });
   console.log('[/admin/test/simulate-missed] Route complete, response sent');
 
   broadcastShame(friends, name)
@@ -351,34 +347,30 @@ router.post('/admin/test/simulate-missed', requireAuth, withTimeout(async (req, 
 }));
 
 // ── POST /admin/test/simulate-success ────────────────────────────────────────
+// Sends success notifications using real today's data WITHOUT modifying the database.
 
 router.post('/admin/test/simulate-success', requireAuth, withTimeout(async (req, res) => {
-  const dateStr       = getCTDateStr();
-  const testSelfieUrl = 'https://placehold.co/600x600/8b0000/c8a96e/png?text=TEST+SELFIE';
+  const dateStr   = getCTDateStr();
+  const today     = await getTodayCheckin(dateStr);
+  const streak    = await getCurrentStreak();
+  const name      = await getSetting('primary_user_name') || 'Jake';
+  const friends   = await getActiveFriends();
 
-  await insertCheckin(dateStr, 'pending');
-  await updateCheckin(dateStr, {
-    status:        'success',
-    selfie_url:    testSelfieUrl,
-    checked_in_at: new Date().toISOString(),
-  });
-
-  const streak  = await getCurrentStreak();
-  await updateCheckin(dateStr, { streak_at_checkin: streak });
-
-  const name    = await getSetting('primary_user_name') || 'Jake';
-  const friends = await getActiveFriends();
+  // Use real selfie if available, fall back to placeholder
+  const selfieUrl = (today && today.selfie_url) || 'https://placehold.co/600x600/8b0000/c8a96e/png?text=TEST+SELFIE';
+  const extras    = (today && today.quote_text)
+    ? { quote: { text: today.quote_text, speaker: today.quote_speaker } }
+    : {};
 
   const smsSent   = friends.filter(f => (f.notify_mode || 'realtime') === 'realtime' && f.notify_success !== 0 && f.notify_sms !== 0 && f.phone).length;
   const emailSent = friends.filter(f => f.notify_email !== 0 && f.email && f.notify_success !== 0).length;
 
-  // DB work done — respond now, fire notifications in background
-  res.json({ ok: true, message: `Today marked success (streak: ${streak}). Sending to ${smsSent} SMS, ${emailSent} email in background.` });
+  res.json({ ok: true, message: `Sending success notifications (streak: ${streak}) to ${smsSent} SMS, ${emailSent} email in background. No data was changed.` });
   console.log('[/admin/test/simulate-success] Route complete, response sent');
 
-  broadcastSuccess(friends, name, streak, testSelfieUrl)
+  broadcastSuccess(friends, name, streak, selfieUrl)
     .catch(err => console.error('[simulate-success] SMS broadcast error:', err.message));
-  broadcastSuccessEmail(friends, name, testSelfieUrl, streak)
+  broadcastSuccessEmail(friends, name, selfieUrl, streak, extras)
     .catch(err => console.error('[simulate-success] Email broadcast error:', err.message));
 }));
 
