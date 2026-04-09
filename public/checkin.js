@@ -1,6 +1,6 @@
 /* Frontend JS for the primary check-in flow */
 
-// ── Milestone celebration overlay ─────────────────────────────────────────────
+// ── Streak milestone celebration overlay ──────────────────────────────────────
 (function () {
   var overlay = document.getElementById('milestone-overlay');
   if (!overlay) return;
@@ -14,6 +14,20 @@
 
   setTimeout(dismissOverlay, duration);
   overlay.addEventListener('click', dismissOverlay);
+})();
+
+// ── Time milestone unlock overlay ─────────────────────────────────────────────
+(function () {
+  var overlay = document.getElementById('time-milestone-overlay');
+  if (!overlay) return;
+
+  function dismiss() {
+    overlay.classList.add('tmo-fade-out');
+    setTimeout(function () { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 600);
+  }
+
+  setTimeout(dismiss, 4000);
+  overlay.addEventListener('click', dismiss);
 })();
 
 (function () {

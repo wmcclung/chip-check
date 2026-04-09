@@ -18,9 +18,10 @@ const {
   getActiveFriends,
   getDigestFriends,
   updateFriendDigestSent,
+  getWakeStats,
 } = require('./db');
-const { broadcastShame, sendDigest } = require('./sms');
-const { broadcastShameEmail, sendDigestEmail } = require('./email');
+const { broadcastShame, sendDigest, sendSMS } = require('./sms');
+const { broadcastShameEmail, sendDigestEmail, sendSuccessEmail } = require('./email');
 
 const app = express();
 
@@ -46,6 +47,7 @@ app.use(session({
 app.use('/', require('./routes/checkin'));
 app.use('/', require('./routes/join'));
 app.use('/', require('./routes/admin'));
+app.use('/', require('./routes/stats'));
 
 // ── Cron helpers ──────────────────────────────────────────────────────────────
 
@@ -150,6 +152,81 @@ cron.schedule('*/15 * * * *', async () => {
     console.error('[CRON DIGEST] Error:', err);
   }
 });
+
+// ── Cron: Friday 5 PM CT — weekly summary to Chip ────────────────────────────
+
+function minutesToTimeStr(minutes) {
+  const h    = Math.floor(minutes / 60);
+  const m    = minutes % 60;
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const dh   = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${dh}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+function avgMinutes(rows) {
+  if (!rows.length) return null;
+  return Math.round(rows.reduce((s, r) => s + r.checkin_minutes, 0) / rows.length);
+}
+
+cron.schedule('0 17 * * 5', async () => {
+  try {
+    const chipPhone = await getSetting('chip_phone');
+    const chipEmail = await getSetting('chip_email');
+    if (!chipPhone && !chipEmail) return; // not configured
+
+    const name   = await getSetting('primary_user_name') || 'Chip';
+    const streak = await getCurrentStreak();
+    const wakeRows = await getWakeStats();
+
+    const thisWeek = wakeRows.slice(0, 7);
+    const lastWeek = wakeRows.slice(7, 14);
+    const thisAvg  = avgMinutes(thisWeek);
+    const lastAvg  = avgMinutes(lastWeek);
+    const bestThis = thisWeek.length
+      ? thisWeek.reduce((b, r) => r.checkin_minutes < b.checkin_minutes ? r : b)
+      : null;
+
+    const trendStr = (thisAvg != null && lastAvg != null)
+      ? (lastAvg - thisAvg >= 10
+          ? `${lastAvg - thisAvg} min earlier`
+          : (thisAvg - lastAvg >= 10
+              ? `${thisAvg - lastAvg} min later`
+              : 'About the same'))
+      : 'Not enough data';
+
+    const smsBody = [
+      `📊 Week in Review:`,
+      `This week avg: ${thisAvg != null ? minutesToTimeStr(thisAvg) : '—'}`,
+      `Last week avg: ${lastAvg != null ? minutesToTimeStr(lastAvg) : '—'}`,
+      `Trend: ${trendStr}`,
+      `Streak: ${streak} days`,
+      `Best this week: ${bestThis ? minutesToTimeStr(bestThis.checkin_minutes) : '—'}`,
+      `Keep going 🔥`,
+    ].join('\n');
+
+    if (chipPhone) {
+      sendSMS(chipPhone, smsBody)
+        .catch(err => console.error('[CRON WEEKLY] SMS failed:', err.message));
+    }
+
+    if (chipEmail) {
+      // Reuse a simple friend-shaped object for sendSuccessEmail shape — just use raw resend
+      const { Resend } = require('resend');
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      const htmlBody = `<pre style="font-family:monospace;color:#f0e8d8;line-height:1.8">${smsBody}</pre>`;
+      resend.emails.send({
+        from:    process.env.RESEND_FROM_EMAIL,
+        to:      chipEmail,
+        subject: `📊 ${name}'s Weekly Wake-Up Review`,
+        html:    `<!DOCTYPE html><html><body style="background:#0a0a0f;padding:2rem">${htmlBody}</body></html>`,
+      }).catch(err => console.error('[CRON WEEKLY] Email failed:', err.message));
+    }
+
+    console.log('[CRON WEEKLY] Weekly summary sent to Chip');
+  } catch (err) {
+    console.error('[CRON WEEKLY] Error:', err);
+  }
+}, { timezone: 'America/Chicago' });
 
 // ── Start server ──────────────────────────────────────────────────────────────
 

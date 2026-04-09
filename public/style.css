@@ -957,3 +957,345 @@ code {
   /* Milestone badge on success screen */
   .milestone-badge { font-size: 0.75rem; }
 }
+
+/* ── Wake-time display on success screen ────────────────────────────────────── */
+.checkin-time-display {
+  font-size: 1.3rem;
+  color: var(--amber);
+  letter-spacing: 0.05em;
+  margin: 0.25rem 0;
+}
+
+/* ── Trend indicators ───────────────────────────────────────────────────────── */
+.trend-line {
+  font-size: 0.9rem;
+  font-family: var(--font-serif);
+  margin: 0.1rem 0;
+}
+.trend-good    { color: #4caf50; }
+.trend-bad     { color: var(--red-light); }
+.trend-neutral { color: var(--muted); }
+
+/* ── Wake stats 2×2 grid ────────────────────────────────────────────────────── */
+.wake-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 360px;
+  margin: 0.75rem 0;
+}
+.wake-stat-card {
+  background: var(--surface);
+  border: 1px solid rgba(200,169,110,0.2);
+  border-radius: 6px;
+  padding: 0.75rem;
+  text-align: center;
+}
+.wake-stat-value {
+  font-family: var(--font-sans);
+  font-size: 1.1rem;
+  color: var(--amber);
+  font-weight: 900;
+}
+.wake-stat-label {
+  font-family: var(--font-serif);
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-top: 0.2rem;
+}
+
+/* ── Personal best banner ───────────────────────────────────────────────────── */
+.pb-banner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  background: linear-gradient(135deg, #8a6e3e, #c8a96e, #8a6e3e);
+  color: #0a0a0f;
+  text-align: center;
+  font-family: var(--font-sans);
+  font-size: 1.1rem;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  padding: 0.8rem;
+  z-index: 200;
+  animation: pb-slide-in 0.4s ease, pb-fade-out 0.5s ease 3.5s forwards;
+}
+@keyframes pb-slide-in {
+  from { transform: translateY(-100%); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+@keyframes pb-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; pointer-events: none; }
+}
+
+/* ── Stats link on success screen ───────────────────────────────────────────── */
+.stats-link {
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+  color: var(--amber-dim);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(200,169,110,0.3);
+  padding-bottom: 1px;
+  margin-top: 0.5rem;
+}
+.stats-link:hover { color: var(--amber); }
+
+/* ── /stats page layout ─────────────────────────────────────────────────────── */
+.stats-body { background: var(--bg); color: var(--white); min-height: 100vh; }
+
+.stats-container {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+}
+
+.stats-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.stats-title {
+  font-family: var(--font-sans);
+  font-size: 1.4rem;
+  color: var(--amber);
+  letter-spacing: 0.1em;
+}
+.stats-back-link {
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+  color: var(--amber-dim);
+  text-decoration: none;
+}
+.stats-back-link:hover { color: var(--amber); }
+
+.stats-streak-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+.stats-streak-card {
+  background: var(--surface);
+  border: 1px solid rgba(200,169,110,0.2);
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+}
+.stats-streak-num {
+  font-family: var(--font-sans);
+  font-size: clamp(1.8rem, 6vw, 2.8rem);
+  font-weight: 900;
+  color: var(--amber);
+  line-height: 1;
+}
+.stats-streak-label {
+  font-family: var(--font-serif);
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-top: 0.3rem;
+}
+
+.stats-card {
+  background: var(--surface);
+  border: 1px solid rgba(200,169,110,0.15);
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+.stats-section-title {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  color: var(--amber);
+  letter-spacing: 0.08em;
+  margin-bottom: 1rem;
+}
+
+.stats-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.stats-kpi {
+  text-align: center;
+}
+.stats-kpi-value {
+  font-family: var(--font-sans);
+  font-size: 1.15rem;
+  color: var(--amber);
+  font-weight: 900;
+}
+.stats-kpi-label {
+  font-family: var(--font-serif);
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 0.2rem;
+}
+.stats-kpi-sub {
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin-top: 0.1rem;
+}
+
+.stats-week-compare {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-serif);
+  font-size: 0.88rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(200,169,110,0.1);
+}
+.stats-compare-label { color: var(--muted); }
+.stats-compare-vals  { color: var(--amber); }
+.stats-trend         { font-weight: bold; }
+
+/* Chart */
+.chart-wrapper {
+  position: relative;
+  height: 240px;
+}
+
+/* Time milestone badge grid */
+.tm-badge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+.tm-badge {
+  border-radius: 8px;
+  padding: 0.85rem 0.75rem;
+  text-align: center;
+  border: 1px solid;
+  transition: opacity 0.2s;
+}
+.tm-earned {
+  background: rgba(200,169,110,0.1);
+  border-color: rgba(200,169,110,0.4);
+}
+.tm-locked {
+  background: rgba(90,90,110,0.1);
+  border-color: rgba(90,90,110,0.3);
+  opacity: 0.55;
+}
+.tm-icon {
+  font-size: 1.6rem;
+  margin-bottom: 0.4rem;
+}
+.tm-label {
+  font-family: var(--font-serif);
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.tm-badge-text {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  color: var(--amber);
+  letter-spacing: 0.06em;
+  margin-top: 0.35rem;
+}
+
+/* Stats table row colors */
+.stats-table .row-improving td { color: #4caf50; }
+.stats-table .row-slipping  td { color: var(--red-light); }
+
+/* ── Time milestone unlock overlay ─────────────────────────────────────────── */
+.time-milestone-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  background: rgba(10, 10, 15, 0.96);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: tmo-fade-in 0.4s ease;
+  cursor: pointer;
+}
+@keyframes tmo-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.time-milestone-overlay.tmo-fade-out {
+  animation: tmo-fade-out-anim 0.6s ease forwards;
+}
+@keyframes tmo-fade-out-anim {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+.tmo-inner {
+  text-align: center;
+  padding: 2rem 1.5rem;
+  max-width: 380px;
+}
+.tmo-label {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  letter-spacing: 0.25em;
+  color: var(--amber-dim);
+  text-transform: uppercase;
+  margin-bottom: 1.25rem;
+  animation: tmo-fade-in 0.4s ease 0.2s both;
+}
+.tmo-badge {
+  font-family: var(--font-sans);
+  font-size: clamp(1.2rem, 5vw, 1.7rem);
+  font-weight: 900;
+  color: var(--amber);
+  letter-spacing: 0.06em;
+  margin-bottom: 1.5rem;
+  text-shadow: 0 0 30px rgba(200, 169, 110, 0.5);
+  animation: tmo-badge-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s both;
+}
+@keyframes tmo-badge-in {
+  from { transform: scale(0.6); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+.tmo-quote {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: clamp(1rem, 3.5vw, 1.3rem);
+  color: var(--amber);
+  line-height: 1.55;
+  margin-bottom: 0.6rem;
+  animation: tmo-fade-in 0.4s ease 0.6s both;
+}
+.tmo-cite {
+  font-family: var(--font-serif);
+  font-size: 0.85rem;
+  color: var(--amber-dim);
+  margin-bottom: 2rem;
+  animation: tmo-fade-in 0.4s ease 0.8s both;
+}
+.tmo-tap {
+  font-family: var(--font-serif);
+  font-size: 0.75rem;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  animation: tmo-pulse 2s ease-in-out 1.5s infinite;
+}
+@keyframes tmo-pulse {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 1; }
+}
+
+/* ── Responsive: stats page ─────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .stats-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .stats-streak-row { grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+  .stats-streak-num { font-size: 1.5rem; }
+  .chart-wrapper { height: 200px; }
+  .tm-badge-grid { grid-template-columns: repeat(2, 1fr); }
+  .stats-week-compare { flex-direction: column; align-items: flex-start; }
+}

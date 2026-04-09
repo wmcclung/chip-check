@@ -30,6 +30,14 @@ function emailHtml(bodyHtml) {
   .quote-cite { font-size:0.82rem; color:#8a6e3e; font-style:normal; }
   .shame-box { background:rgba(139,0,0,0.2); border:1px solid #8b0000; padding:16px 20px; border-radius:4px; margin:24px 0; }
   .shame-box p { color:#f0e8d8; margin:0; }
+  .checkin-time-email { font-size:1.1rem; color:#c8a96e; margin:0 0 16px; }
+  .milestone-unlock-box { background:rgba(200,169,110,0.08); border:1px solid rgba(200,169,110,0.35); border-radius:6px; padding:16px 20px; margin:24px 0; }
+  .milestone-unlock-label { font-family:'Arial Black',Impact,sans-serif; font-size:0.72rem; letter-spacing:0.2em; color:#8a6e3e; text-transform:uppercase; margin-bottom:8px; }
+  .milestone-unlock-badge { font-family:'Arial Black',Impact,sans-serif; font-size:1.1rem; color:#c8a96e; letter-spacing:0.06em; }
+  .stats-snapshot { width:100%; border-collapse:collapse; margin:20px 0; }
+  .stat-cell { text-align:center; padding:10px 4px; border:1px solid rgba(200,169,110,0.15); }
+  .stat-val { font-family:'Arial Black',Impact,sans-serif; font-size:1rem; color:#c8a96e; }
+  .stat-lbl { font-size:0.68rem; color:#8a6e3e; text-transform:uppercase; letter-spacing:0.08em; margin-top:4px; }
   .footer { color:#5a5a6e; font-size:11px; margin-top:36px; border-top:1px solid #1e1e2a; padding-top:16px; line-height:1.7; }
 </style>
 </head>
@@ -68,16 +76,58 @@ async function send(to, subject, html) {
 
 // ── Single-friend senders ─────────────────────────────────────────────────────
 
-async function sendSuccessEmail(friend, name, selfieUrl, streak) {
+async function sendSuccessEmail(friend, name, selfieUrl, streak, extras = {}) {
   if (!friend.email) return;
-  const quote = getSuccessQuote(streak);
+  const { checkinTime, wakeStats, newMilestones = [], quote: storedQuote } = extras;
+  const quote = storedQuote || getSuccessQuote(streak);
+
+  // ── Milestone unlock section ──────────────────────────────────────────────
+  let milestoneSection = '';
+  if (newMilestones.length > 0) {
+    const tm = newMilestones[0];
+    milestoneSection = `
+      <div class="milestone-unlock-box">
+        <div class="milestone-unlock-label">🏅 MILESTONE UNLOCKED</div>
+        <div class="milestone-unlock-badge">${tm.badge}</div>
+        <div class="quote-block" style="margin-top:0.75rem">
+          <p class="quote-text">"${tm.text}"</p>
+          <p class="quote-cite">— ${tm.speaker}</p>
+        </div>
+      </div>`;
+  }
+
+  // ── Wake stats snapshot ───────────────────────────────────────────────────
+  let statsSection = '';
+  if (wakeStats) {
+    const { avg7, avg30, avgAll, personalBest } = wakeStats;
+    const fmt = (m) => {
+      if (m == null) return '—';
+      const h = Math.floor(m / 60), min = m % 60;
+      const ap = h < 12 ? 'AM' : 'PM';
+      const dh = h === 0 ? 12 : h > 12 ? h - 12 : h;
+      return `${dh}:${String(min).padStart(2, '0')} ${ap}`;
+    };
+    statsSection = `
+      <table class="stats-snapshot" cellpadding="0" cellspacing="0">
+        <tr>
+          <td class="stat-cell"><div class="stat-val">${fmt(avg7)}</div><div class="stat-lbl">7-day avg</div></td>
+          <td class="stat-cell"><div class="stat-val">${fmt(avg30)}</div><div class="stat-lbl">30-day avg</div></td>
+          <td class="stat-cell"><div class="stat-val">${fmt(avgAll)}</div><div class="stat-lbl">all-time avg</div></td>
+          <td class="stat-cell"><div class="stat-val">${personalBest ? fmt(personalBest.checkin_minutes) : '—'}</div><div class="stat-lbl">personal best</div></td>
+        </tr>
+      </table>`;
+  }
+
   const html = emailHtml(`
     <h1>✅ ${name} checked in!</h1>
+    ${checkinTime ? `<p class="checkin-time-email">Today: <strong>${checkinTime}</strong></p>` : ''}
     ${selfieUrl ? `<img class="selfie" src="${selfieUrl}" alt="Today's selfie">` : ''}
     <div class="streak-block">
       <div class="streak-num">🔥 ${streak}</div>
       <div class="streak-label">day streak</div>
     </div>
+    ${milestoneSection}
+    ${statsSection}
     <div class="quote-block">
       <p class="quote-text">"${quote.text}"</p>
       <p class="quote-cite">— ${quote.speaker}</p>
@@ -146,7 +196,10 @@ async function sendDigestEmail(friend, name, todayCheckin, deadlineHour) {
   }
 
   if (status === 'success' && friend.notify_success !== 0) {
-    await sendSuccessEmail(friend, name, todayCheckin.selfie_url, todayCheckin.streak_at_checkin || 0);
+    const extras = todayCheckin.quote_text
+      ? { quote: { text: todayCheckin.quote_text, speaker: todayCheckin.quote_speaker } }
+      : {};
+    await sendSuccessEmail(friend, name, todayCheckin.selfie_url, todayCheckin.streak_at_checkin || 0, extras);
     return;
   }
 
@@ -159,10 +212,10 @@ async function sendDigestEmail(friend, name, todayCheckin, deadlineHour) {
 
 // ── Broadcast helpers ─────────────────────────────────────────────────────────
 
-async function broadcastSuccessEmail(friends, name, selfieUrl, streak) {
+async function broadcastSuccessEmail(friends, name, selfieUrl, streak, extras = {}) {
   const targets = friends.filter(f => f.notify_email !== 0 && f.email && f.notify_success !== 0);
   for (const friend of targets) {
-    await sendSuccessEmail(friend, name, selfieUrl, streak);
+    await sendSuccessEmail(friend, name, selfieUrl, streak, extras);
   }
 }
 

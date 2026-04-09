@@ -126,6 +126,9 @@ router.get('/admin', requireAuth, withTimeout(async (req, res) => {
   const streak       = await getCurrentStreak();
   const openHour     = await getSetting('checkin_open_hour')     || '4';
   const deadlineHour = await getSetting('checkin_deadline_hour') || '9';
+  const wakeGoalTime = await getSetting('wake_goal_time') || '420';
+  const chipPhone    = await getSetting('chip_phone')     || '';
+  const chipEmail    = await getSetting('chip_email')     || '';
 
   const now   = new Date();
   const ctNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
@@ -140,7 +143,7 @@ router.get('/admin', requireAuth, withTimeout(async (req, res) => {
   const friends    = await getAllFriends();
   const bestStreak = parseInt(await getSetting('best_streak') || '0', 10);
 
-  res.send(adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr }));
+  res.send(adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr, wakeGoalTime, chipPhone, chipEmail }));
   console.log('[GET /admin] Route complete, response sent');
 }));
 
@@ -187,10 +190,13 @@ router.post('/admin/best-streak', requireAuth, withTimeout(async (req, res) => {
 // ── POST /admin/settings ──────────────────────────────────────────────────────
 
 router.post('/admin/settings', requireAuth, withTimeout(async (req, res) => {
-  const { checkin_open_hour, checkin_deadline_hour, primary_user_name } = req.body;
+  const { checkin_open_hour, checkin_deadline_hour, primary_user_name, wake_goal_time, chip_phone, chip_email } = req.body;
   if (checkin_open_hour)     await setSetting('checkin_open_hour',     checkin_open_hour);
   if (checkin_deadline_hour) await setSetting('checkin_deadline_hour', checkin_deadline_hour);
   if (primary_user_name)     await setSetting('primary_user_name',     String(primary_user_name).trim());
+  if (wake_goal_time)        await setSetting('wake_goal_time',        String(parseInt(wake_goal_time, 10)));
+  await setSetting('chip_phone', chip_phone ? String(chip_phone).trim() : '');
+  await setSetting('chip_email', chip_email ? String(chip_email).trim().toLowerCase() : '');
   res.redirect('/admin');
 }));
 
@@ -454,7 +460,7 @@ function statusBadge(status) {
   return map[status] || `<span class="badge">${escapeHtml(status)}</span>`;
 }
 
-function adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr }) {
+function adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr, wakeGoalTime, chipPhone, chipEmail }) {
   const activeCount = friends.filter(f => f.active).length;
 
   let historyRows  = '';
@@ -464,6 +470,7 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
     historyRows += `
     <tr>
       <td>${escapeHtml(row.date)}</td>
+      <td class="small">${escapeHtml(row.checkin_time || '—')}</td>
       <td>${statusBadge(row.status)}</td>
       <td>${row.streak_at_checkin !== null ? row.streak_at_checkin : '—'}</td>
       <td>${row.selfie_url ? `<a href="${escapeHtml(row.selfie_url)}" target="_blank">📸</a>` : '—'}</td>
@@ -477,7 +484,7 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
         ${statusBadge(row.status)}
       </div>
       <div class="card-row-meta">
-        Streak: ${row.streak_at_checkin !== null ? row.streak_at_checkin : '—'}${row.selfie_url ? ` &nbsp;·&nbsp; <a href="${escapeHtml(row.selfie_url)}" target="_blank">📸 Selfie</a>` : ''}${row.notes ? `<br>${escapeHtml(row.notes)}` : ''}
+        ${row.checkin_time ? `${escapeHtml(row.checkin_time)} &nbsp;·&nbsp; ` : ''}Streak: ${row.streak_at_checkin !== null ? row.streak_at_checkin : '—'}${row.selfie_url ? ` &nbsp;·&nbsp; <a href="${escapeHtml(row.selfie_url)}" target="_blank">📸 Selfie</a>` : ''}${row.notes ? `<br>${escapeHtml(row.notes)}` : ''}
       </div>
       <div class="card-row-actions">
         <button class="btn-sm" onclick="editDay(${editArgs})">Edit</button>
@@ -600,7 +607,7 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
       <div class="admin-card">
         <div class="table-scroll hide-mobile">
           <table class="admin-table">
-            <thead><tr><th>Date</th><th>Status</th><th>Streak</th><th>Selfie</th><th>Notes</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Date</th><th>Time</th><th>Status</th><th>Streak</th><th>Selfie</th><th>Notes</th><th>Actions</th></tr></thead>
             <tbody>${historyRows}</tbody>
           </table>
         </div>
@@ -640,6 +647,21 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
             <div class="form-group">
               <label>Deadline Hour (CT, 24h)</label>
               <input type="number" name="checkin_deadline_hour" min="0" max="23" value="${escapeHtml(deadlineHour)}" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Wake Goal Time (minutes since midnight)</label>
+              <input type="number" name="wake_goal_time" min="0" max="1439" value="${escapeHtml(wakeGoalTime)}" placeholder="420 = 7:00 AM">
+              <small class="muted">420 = 7 AM, 450 = 7:30 AM, 480 = 8 AM</small>
+            </div>
+            <div class="form-group">
+              <label>Chip's Phone (weekly summary)</label>
+              <input type="text" name="chip_phone" value="${escapeHtml(chipPhone)}" placeholder="+15555551234">
+            </div>
+            <div class="form-group">
+              <label>Chip's Email (weekly summary)</label>
+              <input type="email" name="chip_email" value="${escapeHtml(chipEmail)}" placeholder="chip@example.com">
             </div>
           </div>
           <button type="submit" class="btn-primary">Save Settings</button>

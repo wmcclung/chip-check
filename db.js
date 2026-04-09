@@ -28,7 +28,18 @@ async function init() {
       selfie_url        TEXT,
       checked_in_at     TEXT,
       streak_at_checkin INTEGER,
-      notes             TEXT
+      notes             TEXT,
+      checkin_time      TEXT,
+      checkin_minutes   INTEGER
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS time_milestones (
+      id              SERIAL PRIMARY KEY,
+      milestone_key   TEXT UNIQUE,
+      achieved_at     TEXT,
+      checkin_minutes INTEGER
     )
   `);
 
@@ -56,6 +67,12 @@ async function init() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_friends_email ON friends(email) WHERE email IS NOT NULL
   `);
 
+  // Safe column migrations for checkins
+  await addColumnIfMissing('checkins', 'checkin_time',    'TEXT');
+  await addColumnIfMissing('checkins', 'checkin_minutes', 'INTEGER');
+  await addColumnIfMissing('checkins', 'quote_text',      'TEXT');
+  await addColumnIfMissing('checkins', 'quote_speaker',   'TEXT');
+
   // Safe column migrations for databases that may predate the notification columns
   await addColumnIfMissing('friends', 'notify_success',   'INTEGER DEFAULT 1');
   await addColumnIfMissing('friends', 'notify_missed',    'INTEGER DEFAULT 1');
@@ -74,6 +91,9 @@ async function init() {
     ['primary_user_name',    process.env.PRIMARY_USER_NAME    || 'Jake'],
     ['admin_password',       process.env.ADMIN_PASSWORD       || 'changeme'],
     ['best_streak',          '0'],
+    ['wake_goal_time',       '420'],   // 7:00 AM in minutes
+    ['chip_phone',           ''],
+    ['chip_email',           ''],
   ];
   for (const [key, value] of seeds) {
     await pool.query(
@@ -81,6 +101,19 @@ async function init() {
       [key, value]
     );
   }
+
+  // Seed today's check-in for 2026-04-09 (safe to run multiple times)
+  await pool.query(
+    `INSERT INTO checkins (date, status, checked_in_at, checkin_time, checkin_minutes, quote_text, quote_speaker)
+     VALUES ('2026-04-09', 'success', '2026-04-09T08:37:00', '8:37 AM', 517,
+       'All we have to decide is what to do with the time that is given us.',
+       'Gandalf')
+     ON CONFLICT (date) DO UPDATE SET
+       checkin_time    = COALESCE(checkins.checkin_time,    EXCLUDED.checkin_time),
+       checkin_minutes = COALESCE(checkins.checkin_minutes, EXCLUDED.checkin_minutes),
+       quote_text      = COALESCE(checkins.quote_text,      EXCLUDED.quote_text),
+       quote_speaker   = COALESCE(checkins.quote_speaker,   EXCLUDED.quote_speaker)`
+  );
 
   console.log('[DB] Initialized');
 }
@@ -284,6 +317,43 @@ async function getFriendById(id) {
   return result.rows[0] || null;
 }
 
+// ── Wake-time stat helpers ────────────────────────────────────────────────────
+
+/**
+ * Returns all successful checkins that have checkin_minutes, ordered newest first.
+ * Used to compute averages, personal best, and trend.
+ */
+async function getWakeStats() {
+  const result = await pool.query(
+    `SELECT date, checkin_time, checkin_minutes
+     FROM checkins
+     WHERE status = 'success' AND checkin_minutes IS NOT NULL
+     ORDER BY date DESC`
+  );
+  return result.rows;
+}
+
+// ── Time milestone helpers ────────────────────────────────────────────────────
+
+async function getTimeMilestones() {
+  const result = await pool.query('SELECT * FROM time_milestones ORDER BY achieved_at ASC');
+  return result.rows;
+}
+
+async function hasTimeMilestone(key) {
+  const result = await pool.query('SELECT 1 FROM time_milestones WHERE milestone_key = $1', [key]);
+  return result.rows.length > 0;
+}
+
+async function insertTimeMilestone(key, checkinMinutes) {
+  await pool.query(
+    `INSERT INTO time_milestones (milestone_key, achieved_at, checkin_minutes)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (milestone_key) DO NOTHING`,
+    [key, new Date().toISOString(), checkinMinutes]
+  );
+}
+
 module.exports = {
   pool,
   init,
@@ -303,4 +373,8 @@ module.exports = {
   updateFriendDigestSent,
   removeFriend,
   getFriendById,
+  getWakeStats,
+  getTimeMilestones,
+  hasTimeMilestone,
+  insertTimeMilestone,
 };

@@ -217,4 +217,59 @@ function getFailureQuote() {
   return failureQuotes[Math.floor(Math.random() * failureQuotes.length)];
 }
 
-module.exports = { getSuccessQuote, getFailureQuote, getMilestone, milestones };
+// ── Time-based milestone definitions ─────────────────────────────────────────
+// key, threshold (minutes since midnight), and quote shown on unlock.
+// Evaluated once per check-in; stored permanently in time_milestones DB table.
+
+const timeMilestones = [
+  {
+    key:       'before_830',
+    label:     'First check-in before 8:30 AM',
+    threshold: 510,
+    text:      'The road goes ever on and on, down from the door where it began.',
+    speaker:   'Bilbo Baggins',
+    badge:     '🌅 Up Before 8:30',
+  },
+  {
+    key:       'before_800',
+    label:     'First check-in before 8:00 AM',
+    threshold: 480,
+    text:      'All we have to decide is what to do with the time that is given us.',
+    speaker:   'Gandalf',
+    badge:     '⏰ Up Before 8:00',
+  },
+  {
+    key:       'before_730',
+    label:     'First check-in before 7:30 AM',
+    threshold: 450,
+    text:      'Even the smallest person can change the course of the future.',
+    speaker:   'Galadriel',
+    badge:     '🌄 Up Before 7:30',
+  },
+  {
+    key:       'before_700',
+    label:     'First check-in before 7:00 AM',
+    threshold: 420,
+    text:      'YOU SHALL NOT PASS! ...into the realm of the sleeping.',
+    speaker:   'Gandalf (probably)',
+    badge:     '🔥 Up Before 7:00',
+  },
+  {
+    key:       'personal_best',
+    label:     'Personal best beaten',
+    threshold: null, // evaluated dynamically
+    text:      'The world is changed. I feel it in the water, I feel it in the earth, I smell it in the air.',
+    speaker:   'Galadriel',
+    badge:     '🏆 New Personal Best',
+  },
+  {
+    key:       'avg_7day_800',
+    label:     '7-day average before 8:00 AM',
+    threshold: 480, // avg threshold
+    text:      "A day may come when you sleep in, when you forsake the morning — but it is not this day.",
+    speaker:   'Aragorn',
+    badge:     '📈 7-Day Avg Before 8:00',
+  },
+];
+
+module.exports = { getSuccessQuote, getFailureQuote, getMilestone, milestones, timeMilestones };
