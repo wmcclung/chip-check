@@ -21,6 +21,7 @@ const {
   updateFriendDigestSent,
   getWakeStats,
   getTimeMilestones,
+  getMissStats,
 } = require('../db');
 
 const TIMEZONES = [
@@ -343,8 +344,10 @@ router.post('/admin/test/simulate-missed', requireAuth, withTimeout(async (req, 
 
   broadcastShame(friends, name)
     .catch(err => console.error('[simulate-missed] SMS shame error:', err.message));
-  broadcastShameEmail(friends, name)
-    .catch(err => console.error('[simulate-missed] Email shame error:', err.message));
+  getMissStats().then(missStats =>
+    broadcastShameEmail(friends, name, missStats)
+      .catch(err => console.error('[simulate-missed] Email shame error:', err.message))
+  ).catch(err => console.error('[simulate-missed] getMissStats error:', err.message));
 }));
 
 // ── POST /admin/test/simulate-success ────────────────────────────────────────

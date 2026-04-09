@@ -1136,6 +1136,9 @@ code {
   color: var(--amber);
   font-weight: 900;
 }
+.stats-miss-value {
+  color: #c0392b;
+}
 .stats-kpi-label {
   font-family: var(--font-serif);
   font-size: 0.68rem;

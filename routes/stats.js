@@ -7,6 +7,7 @@ const {
   getRecentCheckins,
   getWakeStats,
   getTimeMilestones,
+  getMissStats,
 } = require('../db');
 const { timeMilestones } = require('../quotes');
 
@@ -50,6 +51,7 @@ router.get('/stats', async (req, res) => {
     const wakeRows     = await getWakeStats();          // successful + has minutes, newest first
     const allCheckins  = await getRecentCheckins(90);   // last 90 days for completion %
     const earnedKeys   = new Set((await getTimeMilestones()).map(m => m.milestone_key));
+    const missStats    = await getMissStats();
 
     // ── Aggregate stats ───────────────────────────────────────────────────────
     const avg7   = avgMinutes(wakeRows.slice(0, 7));
@@ -161,6 +163,7 @@ router.get('/stats', async (req, res) => {
       weekdays, successes, completionPct,
       chartLabels, chartData, missedPoints,
       wakeGoalMin, recentRows, badgeGrid,
+      missStats,
     }));
   } catch (err) {
     console.error('[GET /stats]', err);
@@ -178,6 +181,7 @@ function renderStatsPage(d) {
     weekdays, successes, completionPct,
     chartLabels, chartData, missedPoints,
     wakeGoalMin, recentRows, badgeGrid,
+    missStats,
   } = d;
 
   // Y axis: invert so earlier (smaller minutes) is higher
@@ -264,6 +268,25 @@ function renderStatsPage(d) {
     <div class="stats-card">
       <h2 class="stats-section-title">🏅 Time Milestones</h2>
       <div class="tm-badge-grid">${badgeGrid}</div>
+    </div>
+
+    <!-- Miss stats -->
+    <div class="stats-card">
+      <h2 class="stats-section-title">❌ Missed Days</h2>
+      <div class="stats-kpi-grid stats-miss-grid">
+        <div class="stats-kpi">
+          <div class="stats-kpi-value stats-miss-value">${missStats.last30Misses}</div>
+          <div class="stats-kpi-label">Misses (last 30 days)</div>
+        </div>
+        <div class="stats-kpi">
+          <div class="stats-kpi-value stats-miss-value">${missStats.allTimeMisses}</div>
+          <div class="stats-kpi-label">All-Time Misses</div>
+        </div>
+        <div class="stats-kpi">
+          <div class="stats-kpi-value stats-miss-value">${missStats.missPercent}%</div>
+          <div class="stats-kpi-label">All-Time Miss Rate</div>
+        </div>
+      </div>
     </div>
 
     <!-- Recent 14 days -->

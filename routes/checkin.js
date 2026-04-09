@@ -13,6 +13,7 @@ const {
   getCurrentStreak,
   getActiveFriends,
   getWakeStats,
+  getMissStats,
   getTimeMilestones,
   hasTimeMilestone,
   insertTimeMilestone,
@@ -144,6 +145,7 @@ router.get('/', async (req, res) => {
     let isPersonalBest      = false;
     let earnedMilestones    = [];
     let todayTimeMilestones = [];
+    let missStatsData       = null;
 
     if (screen === 'success') {
       const wakeRows = await getWakeStats();
@@ -168,6 +170,10 @@ router.get('/', async (req, res) => {
         .filter(Boolean);
     }
 
+    if (screen === 'missed') {
+      missStatsData = await getMissStats();
+    }
+
     res.send(renderCheckinPage({
       screen, name, streak, bestStreak, timeStr, dateDisplay,
       openHour, deadlineHour,
@@ -179,6 +185,7 @@ router.get('/', async (req, res) => {
       isPersonalBest,
       earnedMilestones,
       todayTimeMilestones,
+      missStatsData,
     }));
   } catch (err) {
     console.error('[GET /]', err);
@@ -302,6 +309,7 @@ function renderCheckinPage(data) {
     wakeStatsData, isPersonalBest,
     earnedMilestones,
     todayTimeMilestones = [],
+    missStatsData,
   } = data;
 
   let bodyContent = '';
@@ -455,6 +463,25 @@ function renderCheckinPage(data) {
       </div>`;
 
   } else if (screen === 'missed') {
+    let missStatsHtml = '';
+    if (missStatsData) {
+      const { last30Misses, allTimeMisses, missPercent } = missStatsData;
+      missStatsHtml = `
+        <div class="miss-stats-grid">
+          <div class="miss-stat-card">
+            <div class="miss-stat-value">${last30Misses}</div>
+            <div class="miss-stat-label">misses last 30 days</div>
+          </div>
+          <div class="miss-stat-card">
+            <div class="miss-stat-value">${allTimeMisses}</div>
+            <div class="miss-stat-label">all-time misses</div>
+          </div>
+          <div class="miss-stat-card">
+            <div class="miss-stat-value">${missPercent}%</div>
+            <div class="miss-stat-label">all-time miss rate</div>
+          </div>
+        </div>`;
+    }
     bodyContent = `
       <div class="screen center-screen">
         <div class="streak-number broken">0</div>
@@ -463,6 +490,7 @@ function renderCheckinPage(data) {
           <p>"${escapeHtml(failureQuote.text)}"</p>
           <cite>— ${escapeHtml(failureQuote.speaker)}</cite>
         </blockquote>
+        ${missStatsHtml}
         <div class="locked-msg muted">❌ Missed today. Don't let it happen again.</div>
       </div>`;
 

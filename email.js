@@ -121,6 +121,10 @@ async function sendSuccessEmail(friend, name, selfieUrl, streak, extras = {}) {
   const html = emailHtml(`
     <h1>✅ ${name} checked in!</h1>
     ${checkinTime ? `<p class="checkin-time-email">Today: <strong>${checkinTime}</strong></p>` : ''}
+    <div class="quote-block">
+      <p class="quote-text">"${quote.text}"</p>
+      <p class="quote-cite">— ${quote.speaker}</p>
+    </div>
     ${selfieUrl ? `<img class="selfie" src="${selfieUrl}" alt="Today's selfie">` : ''}
     <div class="streak-block">
       <div class="streak-num">🔥 ${streak}</div>
@@ -128,10 +132,6 @@ async function sendSuccessEmail(friend, name, selfieUrl, streak, extras = {}) {
     </div>
     ${milestoneSection}
     ${statsSection}
-    <div class="quote-block">
-      <p class="quote-text">"${quote.text}"</p>
-      <p class="quote-cite">— ${quote.speaker}</p>
-    </div>
   `);
   try {
     await send(friend.email, `✅ ${name} checked in! Streak: ${streak} day${streak === 1 ? '' : 's'} 🔥`, html);
@@ -140,16 +140,31 @@ async function sendSuccessEmail(friend, name, selfieUrl, streak, extras = {}) {
   }
 }
 
-async function sendMissedEmail(friend, name) {
+async function sendMissedEmail(friend, name, missStats = null) {
   if (!friend.email) return;
   const quote = getFailureQuote();
+
+  let missStatsSection = '';
+  if (missStats) {
+    const { last30Misses, allTimeMisses, missPercent } = missStats;
+    missStatsSection = `
+      <table class="stats-snapshot" cellpadding="0" cellspacing="0" style="margin-top:20px">
+        <tr>
+          <td class="stat-cell"><div class="stat-val">${last30Misses}</div><div class="stat-lbl">last 30 days</div></td>
+          <td class="stat-cell"><div class="stat-val">${allTimeMisses}</div><div class="stat-lbl">all-time misses</div></td>
+          <td class="stat-cell"><div class="stat-val">${missPercent}%</div><div class="stat-lbl">miss rate</div></td>
+        </tr>
+      </table>`;
+  }
+
   const html = emailHtml(`
     <h1>❌ ${name} missed his check-in today.</h1>
-    <div class="shame-box"><p>Streak reset to 0. Shame him accordingly.</p></div>
     <div class="quote-block">
       <p class="quote-text">"${quote.text}"</p>
       <p class="quote-cite">— ${quote.speaker}</p>
     </div>
+    <div class="shame-box"><p>Streak reset to 0. Shame him accordingly.</p></div>
+    ${missStatsSection}
   `);
   try {
     await send(friend.email, `❌ ${name} missed his check-in today`, html);
@@ -219,10 +234,10 @@ async function broadcastSuccessEmail(friends, name, selfieUrl, streak, extras = 
   }
 }
 
-async function broadcastShameEmail(friends, name) {
+async function broadcastShameEmail(friends, name, missStats = null) {
   const targets = friends.filter(f => f.notify_email !== 0 && f.email && f.notify_missed !== 0);
   for (const friend of targets) {
-    await sendMissedEmail(friend, name);
+    await sendMissedEmail(friend, name, missStats);
   }
 }
 

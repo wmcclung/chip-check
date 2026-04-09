@@ -317,6 +317,27 @@ async function getFriendById(id) {
   return result.rows[0] || null;
 }
 
+// ── Miss stat helpers ─────────────────────────────────────────────────────────
+
+async function getMissStats() {
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const cutoff = thirtyDaysAgo.toISOString().slice(0, 10);
+
+  const [totalRes, missRes, miss30Res] = await Promise.all([
+    pool.query("SELECT COUNT(*) FROM checkins WHERE status IN ('success','missed')"),
+    pool.query("SELECT COUNT(*) FROM checkins WHERE status = 'missed'"),
+    pool.query("SELECT COUNT(*) FROM checkins WHERE status = 'missed' AND date >= $1", [cutoff]),
+  ]);
+
+  const totalDays    = parseInt(totalRes.rows[0].count, 10);
+  const allTimeMisses = parseInt(missRes.rows[0].count, 10);
+  const last30Misses  = parseInt(miss30Res.rows[0].count, 10);
+  const missPercent   = totalDays > 0 ? Math.round((allTimeMisses / totalDays) * 100) : 0;
+
+  return { totalDays, allTimeMisses, last30Misses, missPercent };
+}
+
 // ── Wake-time stat helpers ────────────────────────────────────────────────────
 
 /**
@@ -374,6 +395,7 @@ module.exports = {
   removeFriend,
   getFriendById,
   getWakeStats,
+  getMissStats,
   getTimeMilestones,
   hasTimeMilestone,
   insertTimeMilestone,

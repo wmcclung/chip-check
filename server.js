@@ -19,6 +19,7 @@ const {
   getDigestFriends,
   updateFriendDigestSent,
   getWakeStats,
+  getMissStats,
 } = require('./db');
 const { broadcastShame, sendDigest, sendSMS } = require('./sms');
 const { broadcastShameEmail, sendDigestEmail, sendSuccessEmail } = require('./email');
@@ -107,8 +108,9 @@ cron.schedule('0 * * * *', async () => {
     const name    = await getSetting('primary_user_name') || 'Jake';
     const friends = await getActiveFriends();
     if (friends.length > 0) {
+      const missStats = await getMissStats();
       await broadcastShame(friends, name);
-      await broadcastShameEmail(friends, name);
+      await broadcastShameEmail(friends, name, missStats);
       console.log(`[CRON DEADLINE] Shame notifications sent to ${friends.length} friends`);
     }
   } catch (err) {
