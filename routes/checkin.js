@@ -395,14 +395,26 @@ function renderCheckinPage(data) {
     let statsGrid = '';
     if (wakeStatsData) {
       const { avg7, avg30, avgAll, personalBest } = wakeStatsData;
+
+      // Color each avg relative to its baseline (10-min threshold)
+      function statClass(value, baseline) {
+        if (value == null || baseline == null) return '';
+        const diff = baseline - value; // positive = earlier = better
+        if (diff >= TREND_THRESHOLD_MINUTES) return 'stat-value-good';
+        if (diff <= -TREND_THRESHOLD_MINUTES) return 'stat-value-bad';
+        return '';
+      }
+      const avg7Class  = statClass(avg7,  avg30);
+      const avg30Class = statClass(avg30, avgAll);
+
       statsGrid = `
         <div class="wake-stats-grid">
           <div class="wake-stat-card">
-            <div class="wake-stat-value">${avg7  != null ? minutesToTimeStr(avg7)  : '—'}</div>
+            <div class="wake-stat-value ${avg7Class}">${avg7  != null ? minutesToTimeStr(avg7)  : '—'}</div>
             <div class="wake-stat-label">7-day avg</div>
           </div>
           <div class="wake-stat-card">
-            <div class="wake-stat-value">${avg30 != null ? minutesToTimeStr(avg30) : '—'}</div>
+            <div class="wake-stat-value ${avg30Class}">${avg30 != null ? minutesToTimeStr(avg30) : '—'}</div>
             <div class="wake-stat-label">30-day avg</div>
           </div>
           <div class="wake-stat-card">
@@ -410,7 +422,7 @@ function renderCheckinPage(data) {
             <div class="wake-stat-label">all-time avg</div>
           </div>
           <div class="wake-stat-card">
-            <div class="wake-stat-value">${personalBest ? minutesToTimeStr(personalBest.checkin_minutes) : '—'}</div>
+            <div class="wake-stat-value stat-value-best">${personalBest ? minutesToTimeStr(personalBest.checkin_minutes) : '—'}</div>
             <div class="wake-stat-label">personal best</div>
           </div>
         </div>`;

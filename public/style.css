@@ -1006,6 +1006,9 @@ code {
   letter-spacing: 0.1em;
   margin-top: 0.2rem;
 }
+.stat-value-good { color: #4caf50; }
+.stat-value-bad  { color: var(--red-light); }
+.stat-value-best { color: var(--amber); text-shadow: 0 0 8px rgba(200,169,110,0.4); }
 
 /* ── Personal best banner ───────────────────────────────────────────────────── */
 .pb-banner {

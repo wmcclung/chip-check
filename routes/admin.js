@@ -19,6 +19,8 @@ const {
   getFriendById,
   updateFriendPrefs,
   updateFriendDigestSent,
+  getWakeStats,
+  getTimeMilestones,
 } = require('../db');
 
 const TIMEZONES = [
@@ -417,6 +419,66 @@ router.post('/admin/test/trigger-digest', requireAuth, withTimeout(async (req, r
   }
 }));
 
+// ── POST /admin/test/resend-today ─────────────────────────────────────────────
+
+router.post('/admin/test/resend-today', requireAuth, withTimeout(async (req, res) => {
+  const dateStr = getCTDateStr();
+  const today   = await getTodayCheckin(dateStr);
+
+  if (!today || today.status !== 'success') {
+    return res.json({ ok: false, message: "Today isn't a success check-in — nothing to resend." });
+  }
+
+  const name    = await getSetting('primary_user_name') || 'Chip';
+  const friends = await getActiveFriends();
+
+  const emailTargets = friends.filter(f => f.notify_email !== 0 && f.email && f.notify_success !== 0).length;
+  const smsTargets   = friends.filter(f => (f.notify_mode || 'realtime') === 'realtime' && f.notify_success !== 0 && f.notify_sms !== 0 && f.phone).length;
+
+  res.json({ ok: true, message: `Resending today's result to ${emailTargets} email, ${smsTargets} SMS in background.` });
+  console.log('[/admin/test/resend-today] Route complete, response sent');
+
+  // Build extras for email: stored quote + wake stats + milestones earned today
+  const wakeRows = await getWakeStats();
+  const { avg7, avg30, avgAll, personalBest, yesterday, thisWeekAvg, lastWeekAvg } =
+    (function computeWakeStats(rows, ds) {
+      const withoutToday = rows.filter(r => r.date !== ds);
+      return {
+        avg7:         rows.slice(0,7).reduce((s,r,_,a) => s + r.checkin_minutes/a.length, 0) || null,
+        avg30:        rows.slice(0,30).reduce((s,r,_,a) => s + r.checkin_minutes/a.length, 0) || null,
+        avgAll:       rows.reduce((s,r,_,a) => s + r.checkin_minutes/a.length, 0) || null,
+        personalBest: rows.length ? rows.reduce((b,r) => r.checkin_minutes < b.checkin_minutes ? r : b) : null,
+        yesterday:    withoutToday[0] || null,
+        thisWeekAvg:  rows.slice(0,7).reduce((s,r,_,a) => s + r.checkin_minutes/a.length, 0) || null,
+        lastWeekAvg:  rows.slice(7,14).reduce((s,r,_,a) => s + r.checkin_minutes/a.length, 0) || null,
+      };
+    })(wakeRows, dateStr);
+
+  const allMilestones  = await getTimeMilestones();
+  const todayMilestoneKeys = allMilestones
+    .filter(m => m.achieved_at && m.achieved_at.slice(0, 10) === dateStr)
+    .map(m => m.milestone_key);
+
+  const { timeMilestones } = require('../quotes');
+  const newMilestones = todayMilestoneKeys
+    .map(k => timeMilestones.find(t => t.key === k))
+    .filter(Boolean)
+    .map(m => ({ badge: m.badge, text: m.text, speaker: m.speaker }));
+
+  const extras = {
+    checkinTime:   today.checkin_time,
+    wakeStats:     { avg7: Math.round(avg7), avg30: Math.round(avg30), avgAll: Math.round(avgAll), personalBest, yesterday, thisWeekAvg: Math.round(thisWeekAvg), lastWeekAvg: Math.round(lastWeekAvg) },
+    newMilestones,
+    quote:         today.quote_text ? { text: today.quote_text, speaker: today.quote_speaker } : null,
+  };
+
+  broadcastSuccessEmail(friends, name, today.selfie_url, today.streak_at_checkin || 0, extras)
+    .catch(err => console.error('[resend-today] Email error:', err.message));
+
+  broadcastSuccess(friends, name, today.streak_at_checkin || 0, today.selfie_url)
+    .catch(err => console.error('[resend-today] SMS error:', err.message));
+}));
+
 // ── POST /admin/logout ────────────────────────────────────────────────────────
 
 router.post('/admin/logout', (req, res) => {
@@ -706,6 +768,7 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
           <button class="btn-test" onclick="testAction('simulate-missed', 'This will mark today as MISSED and send a real shame SMS to all active real-time friends.')">Simulate Missed Deadline</button>
           <button class="btn-test" onclick="testAction('reset-today',     'This will reset today back to pending so you can test again. No SMS sent.')">Reset Today</button>
           <button class="btn-test" onclick="testAction('trigger-digest',  'This will immediately send digest messages to all active digest-mode friends, ignoring their scheduled time.')">Trigger Digest Now</button>
+          <button class="btn-test" onclick="testAction('resend-today',    'This will resend today\\'s success email and SMS to all active friends. Use to test the email layout.')">Resend Today's Result</button>
         </div>
         <p id="test-result" class="muted small" style="min-height:1.2em"></p>
       </div>
