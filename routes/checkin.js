@@ -17,8 +17,25 @@ const {
   getTimeMilestones,
   hasTimeMilestone,
   insertTimeMilestone,
+  getQuestState,
+  getCurrentCampaign,
+  updateQuestState,
+  insertQuestArtifact,
 } = require('../db');
 const { getSuccessQuote, getFailureQuote, getMilestone, timeMilestones } = require('../quotes');
+const {
+  CAMPAIGN_1,
+  ARTIFACTS,
+  SPECIAL_NARRATIVES,
+  getChapter,
+  isMilestoneDay,
+  getQuestAdvance,
+  appendToLog,
+  getPerformanceTier,
+  getEmberLevel,
+  pickVariant,
+  renderText,
+} = require('../quest');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -146,6 +163,7 @@ router.get('/', async (req, res) => {
     let earnedMilestones    = [];
     let todayTimeMilestones = [];
     let missStatsData       = null;
+    let questData           = null;
 
     if (screen === 'success') {
       const wakeRows = await getWakeStats();
@@ -168,6 +186,31 @@ router.get('/', async (req, res) => {
         .filter(m => m.achieved_at && m.achieved_at.slice(0, 10) === dateStr)
         .map(m => timeMilestones.find(t => t.key === m.milestone_key))
         .filter(Boolean);
+
+      // Quest state for success screen
+      const qs       = await getQuestState();
+      const campaign = await getCurrentCampaign();
+      if (qs && campaign) {
+        const qd      = qs.quest_day;
+        const chapter = getChapter(Math.max(qd, 1), CAMPAIGN_1);
+        const log     = Array.isArray(qs.story_log) ? qs.story_log : [];
+        questData = {
+          quest_day:           qd,
+          lifetime_quest_days: qs.lifetime_quest_days,
+          campaign_number:     campaign.campaign_number,
+          campaign_title:      campaign.title,
+          chapter_number:      chapter ? chapter.number   : null,
+          chapter_title:       chapter ? chapter.title    : null,
+          location:            chapter ? chapter.location : null,
+          ember_level:         log.length > 0 ? (log[log.length - 1].ember_level || 3) : 3,
+          progress_pct:        Math.min(100, Math.round((qd / CAMPAIGN_1.total_days) * 100)),
+          total_days:          CAMPAIGN_1.total_days,
+          last_log_entry:      log.length > 0 ? log[log.length - 1] : null,
+          story_log:           log,
+          consecutive_misses:  qs.consecutive_misses,
+          artifacts_found:     Array.isArray(qs.artifacts_found) ? qs.artifacts_found : [],
+        };
+      }
     }
 
     if (screen === 'missed') {
@@ -186,6 +229,7 @@ router.get('/', async (req, res) => {
       earnedMilestones,
       todayTimeMilestones,
       missStatsData,
+      questData,
     }));
   } catch (err) {
     console.error('[GET /]', err);
@@ -271,6 +315,167 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
     const quote = getSuccessQuote(streak);
     await updateCheckin(dateStr, { quote_text: quote.text, quote_speaker: quote.speaker });
 
+    // ── Quest advance ─────────────────────────────────────────────────────────
+    let questResult = null;
+    try {
+      const qs       = await getQuestState();
+      const campaign = await getCurrentCampaign();
+
+      if (qs && campaign) {
+        const prevFraction  = parseFloat(qs.quest_day_fraction) || 0;
+        const advance       = getQuestAdvance(checkinMinutes);
+        const rawFraction   = prevFraction + (advance % 1);
+        const fullAdvance   = Math.floor(advance) + Math.floor(rawFraction);
+        const newFraction   = rawFraction % 1;
+        const newQuestDay   = Math.min(qs.quest_day + fullAdvance, CAMPAIGN_1.total_days);
+        const newLifetime   = qs.lifetime_quest_days + fullAdvance;
+
+        const chapter = getChapter(Math.max(newQuestDay, 1), CAMPAIGN_1);
+
+        // Performance tier using yesterday's check-in minutes
+        const prevRows       = wakeRows.filter(r => r.date !== dateStr);
+        const prevMinutes    = prevRows[0] ? prevRows[0].checkin_minutes : checkinMinutes;
+        const tier           = getPerformanceTier(checkinMinutes, prevMinutes);
+        const emberLevel     = getEmberLevel(checkinMinutes);
+
+        // Variant rotation — avoid last 3 used IDs
+        const recentIds      = Array.isArray(qs.last_variant_ids) ? qs.last_variant_ids : [];
+        const variantObj     = pickVariant(chapter, tier, recentIds);
+
+        // Build template data
+        const now     = new Date();
+        const ctDate  = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+        const months  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        const days    = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+        const templateData = {
+          checkinTime: checkinTimeStr,
+          month:       months[ctDate.getMonth()],
+          dayOfWeek:   days[ctDate.getDay()],
+          streak:      streak,
+          questDay:    newQuestDay,
+        };
+        const dailyText  = renderText(variantObj.text, templateData);
+        const pullAppears = variantObj.pull_appears || false;
+
+        // Update variant ID rotation
+        const newRecentIds = [...recentIds, variantObj.id].slice(-10);
+
+        // Milestone
+        const milestone = isMilestoneDay(newQuestDay)
+          ? { text: chapter.milestone, chapter_title: chapter.title }
+          : null;
+
+        // Personal best check
+        const prevBestMinForQuest = prevRows.length > 0
+          ? prevRows.reduce((b, r) => Math.min(b, r.checkin_minutes), Infinity)
+          : Infinity;
+        const isQuestPersonalBest = isFinite(prevBestMinForQuest) && checkinMinutes < prevBestMinForQuest;
+
+        // Special narratives
+        const specials = [];
+        if (qs.pending_regroup) {
+          specials.push(SPECIAL_NARRATIVES.fellowship_regroups);
+        }
+        if (newQuestDay === 5 && campaign.campaign_number === 1) {
+          specials.push(SPECIAL_NARRATIVES.chronicle_begins);
+        }
+        if (isQuestPersonalBest) {
+          specials.push({
+            ...SPECIAL_NARRATIVES.personal_best,
+            text: renderText(SPECIAL_NARRATIVES.personal_best.text, templateData),
+          });
+        }
+        if (checkinMinutes < 420) {
+          specials.push({
+            ...SPECIAL_NARRATIVES.before_7am,
+            text: renderText(SPECIAL_NARRATIVES.before_7am.text, templateData),
+          });
+        }
+
+        // Artifact awards
+        const artifactsFound  = Array.isArray(qs.artifacts_found) ? [...qs.artifacts_found] : [];
+        const artifactsAwarded = [];
+        if (chapter.artifact_awarded && !artifactsFound.includes(chapter.artifact_awarded)) {
+          artifactsFound.push(chapter.artifact_awarded);
+          artifactsAwarded.push(ARTIFACTS[chapter.artifact_awarded]);
+          await insertQuestArtifact(chapter.artifact_awarded, campaign.id, newQuestDay);
+        }
+
+        const newLog = appendToLog(qs.story_log, {
+          date:           dateStr,
+          quest_day:      newQuestDay,
+          chapter_number: chapter.number,
+          chapter_title:  chapter.title,
+          location:       chapter.location,
+          daily_text:     dailyText,
+          milestone_text: milestone ? milestone.text : null,
+          specials:       specials,
+          pull_appears:   pullAppears,
+          artifact_found: artifactsAwarded.length > 0 ? artifactsAwarded[0].id : null,
+          ember_level:    emberLevel,
+          variant_id:     variantObj.id,
+          tier:           tier,
+        });
+
+        await updateQuestState({
+          quest_day:           newQuestDay,
+          quest_day_fraction:  newFraction,
+          lifetime_quest_days: newLifetime,
+          consecutive_misses:  0,
+          pending_regroup:     0,
+          last_variant_ids:    newRecentIds,
+          artifacts_found:     artifactsFound,
+          story_log:           newLog,
+          last_updated:        dateStr,
+        });
+
+        // Update quest_day on time_milestones earned today
+        if (newMilestones.length > 0) {
+          for (const tm of newMilestones) {
+            await require('../db').pool.query(
+              'UPDATE time_milestones SET quest_day = $1 WHERE milestone_key = $2',
+              [newQuestDay, tm.key]
+            );
+          }
+        }
+
+        questResult = {
+          quest_day:           newQuestDay,
+          lifetime_quest_days: newLifetime,
+          chapter_number:      chapter.number,
+          chapter_title:       chapter.title,
+          location:            chapter.location,
+          daily_text:          dailyText,
+          pull_appears:        pullAppears,
+          ember_level:         emberLevel,
+          tier:                tier,
+          variant_id:          variantObj.id,
+          milestone,
+          specials,
+          artifacts_awarded:   artifactsAwarded,
+          campaign_title:      campaign.title,
+          progress_pct:        Math.min(100, Math.round((newQuestDay / CAMPAIGN_1.total_days) * 100)),
+          total_days:          CAMPAIGN_1.total_days,
+        };
+
+        // Handle campaign completion at day 60
+        if (newQuestDay >= CAMPAIGN_1.total_days) {
+          const { archiveCampaign, createNewCampaign } = require('../db');
+          const avgWake = wakeRows.length > 0
+            ? Math.round(wakeRows.reduce((s, r) => s + r.checkin_minutes, 0) / wakeRows.length)
+            : null;
+          await archiveCampaign(campaign.id, 'completed', {
+            questDaysReached: newQuestDay,
+            bestStreak:       streak,
+            avgWakeMinutes:   avgWake,
+          });
+          await createNewCampaign(campaign.campaign_number + 1);
+        }
+      }
+    } catch (questErr) {
+      console.error('[POST /checkin] Quest advance error (non-fatal):', questErr.message);
+    }
+
     const name    = await getSetting('primary_user_name') || 'Chip';
     const friends = await getActiveFriends();
 
@@ -283,6 +488,7 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
       wakeStats:     emailWakeStats,
       newMilestones: newMilestones.map(m => ({ badge: m.badge, text: m.text, speaker: m.speaker })),
       quote,
+      quest:         questResult,
     }).catch(() => {});
 
     res.json({
@@ -291,6 +497,7 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
       checkinTime:   checkinTimeStr,
       newMilestones: newMilestones.map(m => ({ key: m.key, badge: m.badge, text: m.text, speaker: m.speaker })),
       quote:         `"${quote.text}" — ${quote.speaker}`,
+      quest:         questResult,
     });
   } catch (err) {
     console.error('[POST /checkin]', err);
@@ -310,6 +517,7 @@ function renderCheckinPage(data) {
     earnedMilestones,
     todayTimeMilestones = [],
     missStatsData,
+    questData,
   } = data;
 
   let bodyContent = '';
@@ -458,6 +666,7 @@ function renderCheckinPage(data) {
           <p>"${escapeHtml(successQuote.text)}"</p>
           <cite>— ${escapeHtml(successQuote.speaker)}</cite>
         </blockquote>
+        ${buildQuestSection(questData, streak)}
         <a href="/stats" class="stats-link">View your full stats →</a>
         <div class="locked-msg">✅ Checked in today. Come back tomorrow.</div>
       </div>`;
@@ -530,6 +739,166 @@ function renderCheckinPage(data) {
   <script src="/checkin.js"></script>
 </body>
 </html>`;
+}
+
+// ── Quest helpers ─────────────────────────────────────────────────────────────
+
+function buildFlameSvg(streak, isMissed) {
+  if (isMissed) {
+    // grey ember
+    return `<svg class="flame-svg flame-fallen" viewBox="0 0 32 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M16 38c-7 0-11-4.5-11-10 0-4 2-7 4-9-1 3 0 5 2 6-1-5 2-9 5-13 0 5 3 7 4 10 1-2 1-4 0-6 3 3 5 7 5 12 0 5.5-4 10-9 10z" fill="#3a3a3a"/>
+    </svg>`;
+  }
+  let cls, fill, inner;
+  if (streak < 5)       { cls = 'flame-flicker'; fill = '#6b5a3a'; inner = null; }
+  else if (streak < 10) { cls = 'flame-medium';  fill = '#c8841e'; inner = null; }
+  else if (streak < 20) { cls = 'flame-tall';    fill = '#c8a96e'; inner = null; }
+  else if (streak < 30) { cls = 'flame-blaze';   fill = '#e8b84b'; inner = null; }
+  else                  { cls = 'flame-inferno'; fill = '#f0c060'; inner = '#fff8ee'; }
+
+  return `<svg class="flame-svg ${cls}" viewBox="0 0 32 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M16 38c-7 0-11-4.5-11-10 0-4 2-7 4-9-1 3 0 5 2 6-1-5 2-9 5-13 0 5 3 7 4 10 1-2 1-4 0-6 3 3 5 7 5 12 0 5.5-4 10-9 10z" fill="${fill}"/>
+    ${inner ? `<path d="M16 34c-3.5 0-5.5-2-5.5-5 0-2 1-3.5 2-4.5-.5 1.5 0 2.5 1 3-.5-2.5 1-4.5 2.5-6.5 0 2.5 1.5 3.5 2 5 .5-1 .5-2 0-3 1.5 1.5 2.5 3.5 2.5 6 0 2.8-2 5-4.5 5z" fill="${inner}"/>` : ''}
+  </svg>`;
+}
+
+function buildRoadProgress(questDay) {
+  const currentChapter = questDay > 0 ? Math.min(Math.ceil(questDay / 5), 12) : 0;
+  let dots = '';
+  for (let i = 1; i <= 12; i++) {
+    let cls;
+    if (i < currentChapter)      cls = 'qw-complete';
+    else if (i === currentChapter) cls = 'qw-active';
+    else                          cls = 'qw-future';
+    dots += `<span class="qw ${cls}" title="Ch. ${i}"></span>`;
+    if (i < 12) dots += `<span class="qw-line ${i < currentChapter ? 'qw-line-done' : ''}"></span>`;
+  }
+  return `<div class="quest-road-visual">${dots}</div>`;
+}
+
+function buildSpecialsHtml(specials) {
+  if (!specials || specials.length === 0) return '';
+  return specials.map(s => {
+    const paragraphs = s.text
+      .split('\n\n')
+      .filter(p => p.trim())
+      .map(p => `<p class="quest-special-p">${escapeHtml(p.trim())}</p>`)
+      .join('');
+    const labelMap = {
+      chronicle_begins:    '⚔️ The Chronicle Begins',
+      fellowship_regroups: '⚔️ The Fellowship Regroups',
+      personal_best:       '🏆 Personal Best',
+      bonus_early:         '⚡ Before 7 AM',
+    };
+    return `<div class="quest-special quest-special-${s.type}">
+      <div class="quest-special-label">${labelMap[s.type] || '⚔️'}</div>
+      ${paragraphs}
+    </div>`;
+  }).join('');
+}
+
+function buildMilestoneHtml(milestone) {
+  if (!milestone) return '';
+  const paragraphs = milestone.text
+    .split('\n\n')
+    .filter(p => p.trim())
+    .map(p => `<p class="quest-milestone-p">${escapeHtml(p.trim())}</p>`)
+    .join('');
+  return `
+    <div class="quest-milestone-card">
+      <div class="quest-milestone-label">✦ Milestone Reached ✦</div>
+      ${paragraphs}
+      <blockquote class="quest-milestone-quote">"${escapeHtml(milestone.quote)}"</blockquote>
+    </div>`;
+}
+
+// ── Quest section builder ─────────────────────────────────────────────────────
+
+function buildQuestSection(qd, streak) {
+  if (!qd) return '';
+
+  const questDay = qd.quest_day;
+
+  // Day 0: no quest content yet
+  if (questDay === 0) return '';
+
+  // Days 1–4: teaser with brightening ember
+  if (questDay < 5) {
+    const daysLeft  = 5 - questDay;
+    const brightPct = questDay * 20; // 20% → 80%
+    return `
+      <div class="quest-teaser">
+        <div class="quest-teaser-flame" style="opacity:${brightPct / 100}">${buildFlameSvg(streak || 0, false)}</div>
+        <div class="quest-teaser-text">The chronicle stirs...</div>
+        <div class="quest-teaser-count">${daysLeft} morning${daysLeft === 1 ? '' : 's'} until the story begins.</div>
+      </div>`;
+  }
+
+  // Day 5+: full quest section
+  const entry = qd.last_log_entry;
+  if (!entry) return '';
+
+  const narrativeHtml = entry.text
+    .split('\n\n')
+    .filter(p => p.trim())
+    .map(p => `<p class="quest-narrative-p">${escapeHtml(p.trim())}</p>`)
+    .join('');
+
+  const specials  = entry.specials  || [];
+  const milestone = entry.milestone || null;
+
+  // Build story log modal content
+  const logEntries = (qd.story_log || []).slice().reverse(); // newest first
+  const logRows = logEntries.map(e => `
+    <div class="slog-entry slog-${e.type || 'standard'}">
+      <div class="slog-meta">
+        <span class="slog-date">${escapeHtml(e.date || '')}</span>
+        <span class="slog-qday">Day ${e.quest_day || 0}</span>
+        <span class="slog-chapter">${escapeHtml(e.chapter || '')}</span>
+      </div>
+      <div class="slog-text">${escapeHtml(e.text || '')}</div>
+    </div>`).join('');
+
+  return `
+    <div class="quest-section">
+      <div class="quest-header-row">
+        <div class="quest-flame-wrap">${buildFlameSvg(streak || 0, false)}</div>
+        <div class="quest-header-info">
+          <div class="quest-campaign-title">⚔️ ${escapeHtml(qd.campaign_title || 'The Emberstone Chronicles')}</div>
+          <div class="quest-day-label">Quest Day ${questDay}</div>
+        </div>
+      </div>
+
+      ${buildRoadProgress(questDay)}
+
+      <div class="quest-chapter-row">
+        <span class="quest-chapter-num">Ch. ${qd.chapter_number}</span>
+        <span class="quest-chapter-title">${escapeHtml(qd.chapter_title || '')}</span>
+        <span class="quest-location">📍 ${escapeHtml(qd.location || '')}</span>
+      </div>
+
+      <div class="quest-body">
+        ${buildSpecialsHtml(specials)}
+        <div class="quest-narrative">${narrativeHtml}</div>
+        ${buildMilestoneHtml(milestone)}
+      </div>
+
+      <button class="quest-log-btn" id="quest-log-btn">Read your journey →</button>
+    </div>
+
+    <!-- Story log modal -->
+    <div id="quest-log-modal" class="quest-modal hidden">
+      <div class="quest-modal-inner">
+        <div class="quest-modal-header">
+          <span class="quest-modal-title">⚔️ The Chronicle</span>
+          <button class="quest-modal-close" id="quest-log-close">✕</button>
+        </div>
+        <div class="quest-modal-body">
+          ${logRows || '<p class="slog-empty">No entries yet.</p>'}
+        </div>
+      </div>
+    </div>`;
 }
 
 function escapeHtml(str) {

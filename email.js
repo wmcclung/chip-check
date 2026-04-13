@@ -76,9 +76,50 @@ async function send(to, subject, html) {
 
 // ── Single-friend senders ─────────────────────────────────────────────────────
 
+// ── Quest email section (inline styles — no external CSS) ─────────────────────
+
+function buildQuestEmailSection(quest) {
+  if (!quest) return '';
+  const qd = quest.quest_day;
+  if (!qd || qd < 5) return '';
+
+  // Chapter progress dots (12 chapters, simple inline)
+  const currentChapter = Math.min(Math.ceil(qd / 5), 12);
+  const dots = Array.from({ length: 12 }, (_, i) => {
+    const n = i + 1;
+    if (n < currentChapter)  return '<span style="color:#c8a96e">●</span>';
+    if (n === currentChapter) return '<span style="color:#f0c060;font-size:1.1em">●</span>';
+    return '<span style="color:#3a3a3a">○</span>';
+  }).join(' ');
+
+  // Daily narrative (first paragraph only to keep email short)
+  const dailyText = quest.daily_text || '';
+  const firstPara = dailyText.split('\n\n').filter(p => p.trim())[0] || '';
+
+  // Milestone section
+  let milestoneHtml = '';
+  if (quest.milestone) {
+    const firstMPara = quest.milestone.text.split('\n\n').filter(p => p.trim())[0] || '';
+    milestoneHtml = `
+      <p style="color:#f0c060;font-size:12px;font-weight:bold;margin:12px 0 6px;letter-spacing:0.1em;text-transform:uppercase">✦ Milestone Reached ✦</p>
+      <p style="color:#c8a96e;font-size:13px;font-style:italic;line-height:1.6;margin:0 0 8px">${firstMPara}</p>
+      <p style="color:#8a7a5a;font-size:12px;font-style:italic;margin:0">"${quest.milestone.quote}"</p>`;
+  }
+
+  return `
+    <div style="border-top:1px solid #3a2a00;margin-top:24px;padding-top:20px">
+      <p style="color:#8a7a5a;font-size:11px;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px">The Emberstone Chronicles</p>
+      <p style="color:#c8a96e;font-size:13px;margin:0 0 6px">Quest Day ${qd} &middot; Ch. ${quest.chapter_number}: ${quest.chapter_title}</p>
+      <p style="color:#8a7a5a;font-size:11px;letter-spacing:1px;margin:0 0 10px">📍 ${quest.location || ''}</p>
+      <p style="color:#5a4a2a;font-size:13px;letter-spacing:2px;margin:0 0 12px">${dots}</p>
+      <p style="color:#a89060;font-size:13px;line-height:1.7;margin:8px 0">${firstPara}</p>
+      ${milestoneHtml}
+    </div>`;
+}
+
 async function sendSuccessEmail(friend, name, selfieUrl, streak, extras = {}) {
   if (!friend.email) return;
-  const { checkinTime, wakeStats, newMilestones = [], quote: storedQuote } = extras;
+  const { checkinTime, wakeStats, newMilestones = [], quote: storedQuote, quest } = extras;
   const quote = storedQuote || getSuccessQuote(streak);
 
   // ── Milestone unlock section ──────────────────────────────────────────────
@@ -132,6 +173,7 @@ async function sendSuccessEmail(friend, name, selfieUrl, streak, extras = {}) {
     </div>
     ${milestoneSection}
     ${statsSection}
+    ${buildQuestEmailSection(quest)}
   `);
   try {
     await send(friend.email, `✅ ${name} checked in! Streak: ${streak} day${streak === 1 ? '' : 's'} 🔥`, html);
@@ -140,7 +182,7 @@ async function sendSuccessEmail(friend, name, selfieUrl, streak, extras = {}) {
   }
 }
 
-async function sendMissedEmail(friend, name, missStats = null) {
+async function sendMissedEmail(friend, name, missStats = null, questMissed = null) {
   if (!friend.email) return;
   const quote = getFailureQuote();
 
@@ -165,6 +207,7 @@ async function sendMissedEmail(friend, name, missStats = null) {
     </div>
     <div class="shame-box"><p>Streak reset to 0. Shame him accordingly.</p></div>
     ${missStatsSection}
+    ${questMissed ? buildQuestEmailSection(questMissed) : ''}
   `);
   try {
     await send(friend.email, `❌ ${name} missed his check-in today`, html);
@@ -234,10 +277,10 @@ async function broadcastSuccessEmail(friends, name, selfieUrl, streak, extras = 
   }
 }
 
-async function broadcastShameEmail(friends, name, missStats = null) {
+async function broadcastShameEmail(friends, name, missStats = null, questMissed = null) {
   const targets = friends.filter(f => f.notify_email !== 0 && f.email && f.notify_missed !== 0);
   for (const friend of targets) {
-    await sendMissedEmail(friend, name, missStats);
+    await sendMissedEmail(friend, name, missStats, questMissed);
   }
 }
 

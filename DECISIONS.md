@@ -51,3 +51,9 @@
 - Streak tracking and milestone system
 - Friend opt-in via /join page
 - Postgres persistence across deploys
+
+## Quest System
+Narrative quest system lives in quest.js. Campaign 1 is 60 days 
+(The Emberstone Chronicles). Quest day advances faster for earlier 
+wake times. 2 consecutive misses = campaign falls and restarts. 
+Story launches on quest day 5 first campaign only.

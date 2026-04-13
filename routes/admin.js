@@ -22,7 +22,17 @@ const {
   getWakeStats,
   getTimeMilestones,
   getMissStats,
+  getQuestState,
+  getCurrentCampaign,
+  updateQuestState,
+  archiveCampaign,
+  createNewCampaign,
+  getAllCampaigns,
 } = require('../db');
+const {
+  CAMPAIGN_1,
+  getChapter,
+} = require('../quest');
 
 const TIMEZONES = [
   { value: 'America/New_York',    label: 'Eastern (ET)'  },
@@ -145,8 +155,12 @@ router.get('/admin', requireAuth, withTimeout(async (req, res) => {
   const history    = await getRecentCheckins(30);
   const friends    = await getAllFriends();
   const bestStreak = parseInt(await getSetting('best_streak') || '0', 10);
+  const questState   = await getQuestState();
+  const questCampaign = await getCurrentCampaign();
+  const allCampaigns  = await getAllCampaigns();
+  const wakeStats    = await getWakeStats();
 
-  res.send(adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr, wakeGoalTime, chipPhone, chipEmail }));
+  res.send(adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr, wakeGoalTime, chipPhone, chipEmail, questState, questCampaign, allCampaigns, wakeStats }));
   console.log('[GET /admin] Route complete, response sent');
 }));
 
@@ -374,6 +388,48 @@ router.post('/admin/test/simulate-success', requireAuth, withTimeout(async (req,
     .catch(err => console.error('[simulate-success] Email broadcast error:', err.message));
 }));
 
+// ── POST /admin/quest/override ────────────────────────────────────────────────
+
+router.post('/admin/quest/override', requireAuth, withTimeout(async (req, res) => {
+  const day = parseInt(req.body.quest_day, 10);
+  if (isNaN(day) || day < 0 || day > 60) {
+    return res.status(400).json({ error: 'quest_day must be 0–60' });
+  }
+  const fraction = day % 1 === 0 ? 0 : day % 1;
+  await updateQuestState({ quest_day: Math.floor(day), quest_day_fraction: fraction });
+  res.json({ ok: true, message: `Quest day set to ${Math.floor(day)}.` });
+}));
+
+// ── POST /admin/quest/trigger-fall ────────────────────────────────────────────
+
+router.post('/admin/quest/trigger-fall', requireAuth, withTimeout(async (req, res) => {
+  const campaign = await getCurrentCampaign();
+  if (!campaign) return res.status(400).json({ error: 'No active campaign.' });
+  const qs = await getQuestState();
+  await archiveCampaign(campaign.id, 'fallen', {
+    questDaysReached: qs ? qs.quest_day : 0,
+    bestStreak:       0,
+    avgWakeMinutes:   null,
+  });
+  const newId = await createNewCampaign(campaign.campaign_number + 1);
+  res.json({ ok: true, message: `Campaign ${campaign.campaign_number} archived as fallen. New campaign created (id ${newId}).` });
+}));
+
+// ── POST /admin/quest/trigger-complete ────────────────────────────────────────
+
+router.post('/admin/quest/trigger-complete', requireAuth, withTimeout(async (req, res) => {
+  const campaign = await getCurrentCampaign();
+  if (!campaign) return res.status(400).json({ error: 'No active campaign.' });
+  const qs = await getQuestState();
+  await archiveCampaign(campaign.id, 'completed', {
+    questDaysReached: qs ? qs.quest_day : 60,
+    bestStreak:       0,
+    avgWakeMinutes:   null,
+  });
+  const newId = await createNewCampaign(campaign.campaign_number + 1);
+  res.json({ ok: true, message: `Campaign ${campaign.campaign_number} marked completed. New campaign created (id ${newId}).` });
+}));
+
 // ── POST /admin/test/reset-today ─────────────────────────────────────────────
 
 router.post('/admin/test/reset-today', requireAuth, withTimeout(async (req, res) => {
@@ -517,7 +573,7 @@ function statusBadge(status) {
   return map[status] || `<span class="badge">${escapeHtml(status)}</span>`;
 }
 
-function adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr, wakeGoalTime, chipPhone, chipEmail }) {
+function adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr, wakeGoalTime, chipPhone, chipEmail, questState, questCampaign, allCampaigns, wakeStats }) {
   const activeCount = friends.filter(f => f.active).length;
 
   let historyRows  = '';
@@ -769,6 +825,101 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
       </div>
     </details>
 
+    <!-- Quest System -->
+    ${(function() {
+      if (!questState || !questCampaign) return '<details><summary class="section-summary">⚔️ Quest System</summary><div class="admin-card"><p class="muted">Quest state not initialized. Will auto-create on next deploy.</p></div></details>';
+
+      const qd = questState.quest_day;
+      const currentChapter = qd > 0 ? Math.min(Math.ceil(qd / 5), 12) : 0;
+      const chapter = currentChapter > 0 ? CAMPAIGN_1.chapters[currentChapter - 1] : null;
+
+      // Story log table — newest first, use new field names
+      const logEntries = Array.isArray(questState.story_log) ? [...questState.story_log].reverse() : [];
+      const logRows = logEntries.map(e => {
+        const tierClass = e.tier === 'missed' ? 'slog-admin-missed' : `slog-admin-${e.tier || 'standard'}`;
+        const snippet = (e.daily_text || '').replace(/\s+/g, ' ').slice(0, 120);
+        const pullDot  = e.pull_appears ? ' <span style="color:#8b0000" title="Pull appeared">⬤</span>' : '';
+        const artDot   = e.artifact_found ? ' <span style="color:#c8a96e" title="Artifact found">◈</span>' : '';
+        return `<tr class="${tierClass}">
+          <td>${e.date || ''}</td>
+          <td>${e.quest_day || 0}</td>
+          <td>${e.chapter_title || ''}</td>
+          <td>${e.tier || ''}${pullDot}${artDot}</td>
+          <td style="font-size:0.78rem;color:#a89060;max-width:280px">${snippet}${snippet.length === 120 ? '…' : ''}</td>
+        </tr>`;
+      }).join('') || '<tr><td colspan="5" class="muted">No entries yet.</td></tr>';
+
+      // Hall of campaigns
+      const hallRows = (allCampaigns || []).map(c => {
+        const isActive = !c.archived_at;
+        const statusCls = isActive ? '' : c.archive_reason === 'completed' ? 'style="color:#c8a96e"' : 'style="color:#8b0000"';
+        const statusLbl = isActive ? '🟢 Active' : c.archive_reason === 'completed' ? '✅ Complete' : '💀 Fallen';
+        return `<tr>
+          <td>${c.campaign_number}</td>
+          <td>${c.title || ''}</td>
+          <td>${isActive ? qd : (c.quest_days_reached || '—')}</td>
+          <td>${c.best_streak || '—'}</td>
+          <td ${statusCls}>${statusLbl}</td>
+        </tr>`;
+      }).join('') || '<tr><td colspan="5" class="muted">No campaigns.</td></tr>';
+
+      return `
+        <details>
+          <summary class="section-summary">⚔️ Quest System</summary>
+          <div class="admin-card">
+
+            <!-- Current state -->
+            <h3 class="admin-section-label">Current State</h3>
+            <div class="quest-admin-state">
+              <div class="qas-item"><span class="qas-label">Campaign</span><span class="qas-val">${questCampaign.campaign_number} — ${questCampaign.title || ''}</span></div>
+              <div class="qas-item"><span class="qas-label">Quest Day</span><span class="qas-val">${qd} / 60</span></div>
+              <div class="qas-item"><span class="qas-label">Chapter</span><span class="qas-val">${chapter ? `${chapter.number}: ${chapter.title}` : '—'}</span></div>
+              <div class="qas-item"><span class="qas-label">Location</span><span class="qas-val">${chapter ? chapter.location : '—'}</span></div>
+              <div class="qas-item"><span class="qas-label">Consec. Misses</span><span class="qas-val">${questState.consecutive_misses} of 2 before fall</span></div>
+              <div class="qas-item"><span class="qas-label">Lifetime Days</span><span class="qas-val">${questState.lifetime_quest_days}</span></div>
+              <div class="qas-item"><span class="qas-label">Pending Regroup</span><span class="qas-val">${questState.pending_regroup ? '⚠️ Yes' : 'No'}</span></div>
+              <div class="qas-item"><span class="qas-label">Last 3 Variants</span><span class="qas-val" style="font-size:0.78rem">${(Array.isArray(questState.last_variant_ids) ? questState.last_variant_ids.slice(-3) : []).join(', ') || '—'}</span></div>
+              <div class="qas-item"><span class="qas-label">Artifacts Found</span><span class="qas-val" style="font-size:0.78rem">${(Array.isArray(questState.artifacts_found) ? questState.artifacts_found : []).join(', ') || 'none'}</span></div>
+            </div>
+
+            <!-- Override -->
+            <h3 class="admin-section-label" style="margin-top:1.2rem">Manual Quest Day Override</h3>
+            <form id="quest-override-form" style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+              <input type="number" id="quest-day-input" name="quest_day" min="0" max="60" value="${qd}" style="width:80px;padding:0.4rem;background:#1a1a2e;border:1px solid #3a3a5a;color:#f0e8d8;border-radius:4px">
+              <button type="submit" class="btn-small">Set Quest Day</button>
+            </form>
+            <p id="quest-override-result" class="muted small" style="min-height:1.2em;margin-top:0.4rem"></p>
+
+            <!-- Test buttons -->
+            <h3 class="admin-section-label" style="margin-top:1.2rem">Quest Testing</h3>
+            <div class="test-btn-grid" style="margin-bottom:0.8rem">
+              <button class="btn-test" onclick="questAction('trigger-fall',     'Archive current campaign as FALLEN and start a new one.')">Trigger Campaign Fall</button>
+              <button class="btn-test" onclick="questAction('trigger-complete', 'Archive current campaign as COMPLETED and start a new one.')">Trigger Campaign Complete</button>
+            </div>
+            <p id="quest-test-result" class="muted small" style="min-height:1.2em"></p>
+
+            <!-- Story log -->
+            <h3 class="admin-section-label" style="margin-top:1.2rem">Story Log <a href="/story" style="font-size:0.78rem;color:#8a6e3e;margin-left:0.5rem">View full chronicle →</a></h3>
+            <div class="table-scroll">
+              <table class="admin-table" style="font-size:0.8rem">
+                <thead><tr><th>Date</th><th>Day</th><th>Chapter</th><th>Tier</th><th>Narrative</th></tr></thead>
+                <tbody>${logRows}</tbody>
+              </table>
+            </div>
+
+            <!-- Hall of campaigns -->
+            <h3 class="admin-section-label" style="margin-top:1.2rem">Hall of Campaigns</h3>
+            <div class="table-scroll">
+              <table class="admin-table" style="font-size:0.8rem">
+                <thead><tr><th>#</th><th>Title</th><th>Quest Days</th><th>Best Streak</th><th>Status</th></tr></thead>
+                <tbody>${hallRows}</tbody>
+              </table>
+            </div>
+
+          </div>
+        </details>`;
+    })()}
+
     <!-- Password -->
     <details>
       <summary class="section-summary">🔑 Change Password</summary>
@@ -883,6 +1034,37 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
   </div>
 
   <script src="/admin.js"></script>
+  <script>
+    // Quest override form
+    (function() {
+      var form = document.getElementById('quest-override-form');
+      if (!form) return;
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var val = document.getElementById('quest-day-input').value;
+        var el  = document.getElementById('quest-override-result');
+        fetch('/admin/quest/override', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'quest_day=' + encodeURIComponent(val),
+        }).then(r => r.json()).then(d => {
+          el.textContent = d.ok ? d.message : (d.error || 'Error');
+          if (d.ok) setTimeout(() => location.reload(), 800);
+        }).catch(() => { el.textContent = 'Network error.'; });
+      });
+    })();
+
+    // Quest test action buttons
+    function questAction(action, confirmMsg) {
+      if (!confirm(confirmMsg)) return;
+      var el = document.getElementById('quest-test-result');
+      fetch('/admin/quest/' + action, { method: 'POST' })
+        .then(r => r.json()).then(d => {
+          if (el) el.textContent = d.ok ? d.message : (d.error || 'Error');
+          if (d.ok) setTimeout(() => location.reload(), 1200);
+        }).catch(() => { if (el) el.textContent = 'Network error.'; });
+    }
+  </script>
 </body>
 </html>`;
 }

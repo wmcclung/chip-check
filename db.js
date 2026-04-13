@@ -44,6 +44,45 @@ async function init() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS campaigns (
+      id                 SERIAL PRIMARY KEY,
+      campaign_number    INTEGER,
+      title              TEXT,
+      started_at         TEXT,
+      completed_at       TEXT,
+      archived_at        TEXT,
+      archive_reason     TEXT,
+      quest_days_reached INTEGER,
+      best_streak        INTEGER,
+      avg_wake_minutes   INTEGER
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS quest_state (
+      id                  SERIAL PRIMARY KEY,
+      campaign_id         INTEGER REFERENCES campaigns(id),
+      quest_day           INTEGER DEFAULT 0,
+      quest_day_fraction  NUMERIC DEFAULT 0,
+      lifetime_quest_days INTEGER DEFAULT 0,
+      consecutive_misses  INTEGER DEFAULT 0,
+      pending_regroup     INTEGER DEFAULT 0,
+      story_log           JSONB   DEFAULT '[]',
+      last_updated        TEXT
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS quest_artifacts (
+      id               SERIAL PRIMARY KEY,
+      artifact_id      TEXT,
+      campaign_id      INTEGER,
+      quest_day_found  INTEGER,
+      found_at         TEXT
+    )
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS friends (
       id               SERIAL PRIMARY KEY,
       name             TEXT,
@@ -73,6 +112,13 @@ async function init() {
   await addColumnIfMissing('checkins', 'quote_text',      'TEXT');
   await addColumnIfMissing('checkins', 'quote_speaker',   'TEXT');
 
+  // quest_day on time_milestones
+  await addColumnIfMissing('time_milestones', 'quest_day', 'INTEGER');
+
+  // New quest_state columns for variant rotation and artifact tracking
+  await addColumnIfMissing('quest_state', 'last_variant_ids', "JSONB DEFAULT '[]'");
+  await addColumnIfMissing('quest_state', 'artifacts_found',  "JSONB DEFAULT '[]'");
+
   // Safe column migrations for databases that may predate the notification columns
   await addColumnIfMissing('friends', 'notify_success',   'INTEGER DEFAULT 1');
   await addColumnIfMissing('friends', 'notify_missed',    'INTEGER DEFAULT 1');
@@ -100,6 +146,50 @@ async function init() {
       'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING',
       [key, value]
     );
+  }
+
+  // Initialize campaign 1 if none exist yet
+  const campaignCount = await pool.query('SELECT COUNT(*) FROM campaigns');
+  if (parseInt(campaignCount.rows[0].count, 10) === 0) {
+    const campaignRes = await pool.query(
+      `INSERT INTO campaigns (campaign_number, title, started_at)
+       VALUES (1, 'The Emberstone Chronicles', $1)
+       RETURNING id`,
+      [new Date().toISOString()]
+    );
+    await pool.query(
+      `INSERT INTO quest_state
+         (campaign_id, quest_day, quest_day_fraction, lifetime_quest_days,
+          consecutive_misses, pending_regroup, story_log, last_updated)
+       VALUES ($1, 0, 0, 0, 0, 0, '[]', $2)`,
+      [campaignRes.rows[0].id, new Date().toISOString()]
+    );
+    console.log('[DB] Campaign 1 initialized');
+  }
+
+  // Seed quest day to 3 if it's still at 0
+  // Chip had 3 real check-ins before the quest system launched (Apr 7, 8, 9)
+  const qsSeed = await pool.query(
+    'SELECT quest_day FROM quest_state ORDER BY id DESC LIMIT 1'
+  );
+  if (qsSeed.rows[0] && qsSeed.rows[0].quest_day === 0) {
+    const realCheckins = await pool.query(
+      `SELECT COUNT(*) FROM checkins
+       WHERE status = 'success'
+       AND date <= '2026-04-09'`
+    );
+    const realCount = parseInt(realCheckins.rows[0].count, 10);
+    if (realCount >= 3) {
+      await pool.query(
+        `UPDATE quest_state SET
+           quest_day = 3,
+           lifetime_quest_days = 3,
+           last_updated = $1
+         WHERE id = (SELECT id FROM quest_state ORDER BY id DESC LIMIT 1)`,
+        [new Date().toISOString()]
+      );
+      console.log('[DB] Quest day seeded to 3 — reflecting pre-launch check-ins');
+    }
   }
 
   // Seed today's check-in for 2026-04-09 (safe to run multiple times)
@@ -377,6 +467,102 @@ async function insertTimeMilestone(key, checkinMinutes) {
   );
 }
 
+// ── Quest state helpers ───────────────────────────────────────────────────────
+
+async function getQuestState() {
+  const result = await pool.query('SELECT * FROM quest_state ORDER BY id DESC LIMIT 1');
+  return result.rows[0] || null;
+}
+
+async function getCurrentCampaign() {
+  const result = await pool.query(
+    'SELECT * FROM campaigns WHERE archived_at IS NULL ORDER BY id DESC LIMIT 1'
+  );
+  return result.rows[0] || null;
+}
+
+async function updateQuestState(fields) {
+  const qs = await pool.query('SELECT id FROM quest_state ORDER BY id DESC LIMIT 1');
+  if (!qs.rows[0]) return;
+  const id   = qs.rows[0].id;
+  const keys = Object.keys(fields);
+  const setClause = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+  const JSONB_FIELDS = new Set(['story_log', 'last_variant_ids', 'artifacts_found']);
+  const values    = keys.map(k => {
+    if (JSONB_FIELDS.has(k)) return JSON.stringify(fields[k]);
+    return fields[k];
+  });
+  values.push(id);
+  await pool.query(
+    `UPDATE quest_state SET ${setClause} WHERE id = $${keys.length + 1}`,
+    values
+  );
+}
+
+async function archiveCampaign(campaignId, reason, stats = {}) {
+  const { questDaysReached = 0, bestStreak = 0, avgWakeMinutes = null } = stats;
+  await pool.query(
+    `UPDATE campaigns SET
+       archived_at = $1, archive_reason = $2,
+       quest_days_reached = $3, best_streak = $4, avg_wake_minutes = $5
+     WHERE id = $6`,
+    [new Date().toISOString(), reason, questDaysReached, bestStreak, avgWakeMinutes, campaignId]
+  );
+}
+
+async function createNewCampaign(campaignNumber) {
+  const campaignRes = await pool.query(
+    `INSERT INTO campaigns (campaign_number, title, started_at)
+     VALUES ($1, 'The Emberstone Chronicles', $2)
+     RETURNING id`,
+    [campaignNumber, new Date().toISOString()]
+  );
+  const newCampaignId = campaignRes.rows[0].id;
+  // Reset quest_state but preserve lifetime_quest_days AND story_log (full chronicle)
+  await pool.query(
+    `UPDATE quest_state SET
+       campaign_id        = $1,
+       quest_day          = 0,
+       quest_day_fraction = 0,
+       consecutive_misses = 0,
+       pending_regroup    = 1,
+       last_updated       = $2
+     WHERE id = (SELECT id FROM quest_state ORDER BY id DESC LIMIT 1)`,
+    [newCampaignId, new Date().toISOString()]
+  );
+  return newCampaignId;
+}
+
+async function getArchivedCampaigns() {
+  const result = await pool.query(
+    'SELECT * FROM campaigns WHERE archived_at IS NOT NULL ORDER BY id DESC'
+  );
+  return result.rows;
+}
+
+async function getAllCampaigns() {
+  const result = await pool.query('SELECT * FROM campaigns ORDER BY id ASC');
+  return result.rows;
+}
+
+// ── Quest artifact helpers ─────────────────────────────────────────────────────
+
+async function insertQuestArtifact(artifactId, campaignId, questDay) {
+  await pool.query(
+    `INSERT INTO quest_artifacts (artifact_id, campaign_id, quest_day_found, found_at)
+     VALUES ($1, $2, $3, $4)`,
+    [artifactId, campaignId, questDay, new Date().toISOString()]
+  );
+}
+
+async function getQuestArtifacts(campaignId) {
+  const result = await pool.query(
+    'SELECT * FROM quest_artifacts WHERE campaign_id = $1 ORDER BY quest_day_found ASC',
+    [campaignId]
+  );
+  return result.rows;
+}
+
 module.exports = {
   pool,
   init,
@@ -401,4 +587,13 @@ module.exports = {
   getTimeMilestones,
   hasTimeMilestone,
   insertTimeMilestone,
+  getQuestState,
+  getCurrentCampaign,
+  updateQuestState,
+  archiveCampaign,
+  createNewCampaign,
+  getArchivedCampaigns,
+  getAllCampaigns,
+  insertQuestArtifact,
+  getQuestArtifacts,
 };

@@ -20,7 +20,18 @@ const {
   updateFriendDigestSent,
   getWakeStats,
   getMissStats,
+  getQuestState,
+  getCurrentCampaign,
+  updateQuestState,
+  archiveCampaign,
+  createNewCampaign,
 } = require('./db');
+const {
+  CAMPAIGN_1,
+  getChapter,
+  getEmberLevel,
+  appendToLog,
+} = require('./quest');
 const { broadcastShame, sendDigest, sendSMS } = require('./sms');
 const { broadcastShameEmail, sendDigestEmail, sendSuccessEmail } = require('./email');
 
@@ -49,6 +60,7 @@ app.use('/', require('./routes/checkin'));
 app.use('/', require('./routes/join'));
 app.use('/', require('./routes/admin'));
 app.use('/', require('./routes/stats'));
+app.use('/', require('./routes/story'));
 
 // ── Cron helpers ──────────────────────────────────────────────────────────────
 
@@ -107,11 +119,79 @@ cron.schedule('0 * * * *', async () => {
 
     const name    = await getSetting('primary_user_name') || 'Jake';
     const friends = await getActiveFriends();
+    // Fetch quest data before broadcast so it can go in the missed email
+    let questMissedData = null;
+    try {
+      const qsMiss   = await getQuestState();
+      const campMiss = await getCurrentCampaign();
+      if (qsMiss && campMiss) {
+        const { getChapter: gc, CAMPAIGN_1: C1 } = require('./quest');
+        const ch = gc(Math.max(qsMiss.quest_day, 1), C1);
+        questMissedData = {
+          quest_day:       qsMiss.quest_day,
+          chapter_number:  ch.number,
+          chapter_title:   ch.title,
+          location:        ch.location,
+          daily_text:      ch.missed,
+          milestone:       null,
+        };
+      }
+    } catch (_) {}
+
     if (friends.length > 0) {
       const missStats = await getMissStats();
       await broadcastShame(friends, name);
-      await broadcastShameEmail(friends, name, missStats);
+      await broadcastShameEmail(friends, name, missStats, questMissedData);
       console.log(`[CRON DEADLINE] Shame notifications sent to ${friends.length} friends`);
+    }
+
+    // ── Quest: handle missed day ──────────────────────────────────────────────
+    try {
+      const qs       = await getQuestState();
+      const campaign = await getCurrentCampaign();
+      if (qs && campaign) {
+        const newMisses = qs.consecutive_misses + 1;
+        const chapter   = getChapter(Math.max(qs.quest_day, 1), CAMPAIGN_1);
+        const newLog    = appendToLog(qs.story_log, {
+          date:           dateStr,
+          quest_day:      qs.quest_day,
+          chapter_number: chapter.number,
+          chapter_title:  chapter.title,
+          location:       chapter.location,
+          daily_text:     chapter.missed,
+          milestone_text: null,
+          specials:       [],
+          pull_appears:   false,
+          artifact_found: null,
+          ember_level:    0,
+          variant_id:     'missed',
+          tier:           'missed',
+        });
+
+        await updateQuestState({
+          consecutive_misses: newMisses,
+          story_log:          newLog,
+          last_updated:       dateStr,
+        });
+
+        if (newMisses >= 2) {
+          console.log('[CRON DEADLINE] 3 consecutive misses — campaign falls');
+          const wakeRows   = await getWakeStats();
+          const avgWake    = wakeRows.length > 0
+            ? Math.round(wakeRows.reduce((s, r) => s + r.checkin_minutes, 0) / wakeRows.length)
+            : null;
+          const bestStreak = parseInt(await getSetting('best_streak') || '0', 10);
+          await archiveCampaign(campaign.id, 'fallen', {
+            questDaysReached: qs.quest_day,
+            bestStreak,
+            avgWakeMinutes:   avgWake,
+          });
+          await createNewCampaign(campaign.campaign_number + 1);
+          console.log(`[CRON DEADLINE] Campaign ${campaign.campaign_number} archived (fallen). New campaign created.`);
+        }
+      }
+    } catch (questErr) {
+      console.error('[CRON DEADLINE] Quest update error (non-fatal):', questErr.message);
     }
   } catch (err) {
     console.error('[CRON DEADLINE] Error:', err);

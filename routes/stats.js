@@ -8,7 +8,11 @@ const {
   getWakeStats,
   getTimeMilestones,
   getMissStats,
+  getQuestState,
+  getCurrentCampaign,
+  getAllCampaigns,
 } = require('../db');
+const { CAMPAIGN_1 } = require('../quest');
 const { timeMilestones } = require('../quotes');
 
 const TREND_THRESHOLD_MINUTES = 10;
@@ -52,6 +56,9 @@ router.get('/stats', async (req, res) => {
     const allCheckins  = await getRecentCheckins(90);   // last 90 days for completion %
     const earnedKeys   = new Set((await getTimeMilestones()).map(m => m.milestone_key));
     const missStats    = await getMissStats();
+    const questState   = await getQuestState();
+    const questCampaign = await getCurrentCampaign();
+    const allCampaigns  = await getAllCampaigns();
 
     // ── Aggregate stats ───────────────────────────────────────────────────────
     const avg7   = avgMinutes(wakeRows.slice(0, 7));
@@ -164,6 +171,7 @@ router.get('/stats', async (req, res) => {
       chartLabels, chartData, missedPoints,
       wakeGoalMin, recentRows, badgeGrid,
       missStats,
+      questState, questCampaign, allCampaigns,
     }));
   } catch (err) {
     console.error('[GET /stats]', err);
@@ -182,12 +190,106 @@ function renderStatsPage(d) {
     chartLabels, chartData, missedPoints,
     wakeGoalMin, recentRows, badgeGrid,
     missStats,
+    questState, questCampaign, allCampaigns,
   } = d;
 
   // Y axis: invert so earlier (smaller minutes) is higher
   // Chart range: 5:30 AM (330) to 10:00 AM (600)
   const yMin = 330;
   const yMax = 600;
+
+  // ── Quest section HTML ────────────────────────────────────────────────────
+  let questHtml = '';
+  if (questState && questCampaign) {
+    const qd             = questState.quest_day;
+    const totalDays      = CAMPAIGN_1.total_days;
+    const currentChapter = qd > 0 ? Math.min(Math.ceil(qd / 5), 12) : 0;
+
+    // Road waypoints
+    let roadDots = '';
+    for (let i = 1; i <= 12; i++) {
+      let cls = i < currentChapter ? 'sqw-complete' : i === currentChapter ? 'sqw-active' : 'sqw-future';
+      roadDots += `<span class="sqw ${cls}" title="Ch. ${i}: ${escapeHtml(CAMPAIGN_1.chapters[i-1].title)}"></span>`;
+      if (i < 12) roadDots += `<span class="sqw-line ${i < currentChapter ? 'sqw-line-done' : ''}"></span>`;
+    }
+
+    // Chapter map shields
+    let chapterMap = '';
+    for (const ch of CAMPAIGN_1.chapters) {
+      const done    = ch.number < currentChapter;
+      const active  = ch.number === currentChapter;
+      const cls     = done ? 'cmap-done' : active ? 'cmap-active' : 'cmap-future';
+      chapterMap += `
+        <div class="cmap-item ${cls}" title="Ch. ${ch.number}: ${escapeHtml(ch.title)}">
+          <div class="cmap-shield">${done ? '🛡️' : active ? '⚔️' : '○'}</div>
+          <div class="cmap-label">Ch. ${ch.number}</div>
+          <div class="cmap-name">${escapeHtml(ch.title)}</div>
+        </div>`;
+    }
+
+    // Story log
+    const logEntries = Array.isArray(questState.story_log) ? [...questState.story_log].reverse() : [];
+    const logRows = logEntries.map(e => {
+      const varCls = `slog-${e.type || 'standard'}`;
+      return `
+        <div class="slog-entry ${varCls}">
+          <div class="slog-meta">
+            <span class="slog-date">${escapeHtml(e.date || '')}</span>
+            <span class="slog-qday">Day ${e.quest_day || 0}</span>
+            <span class="slog-chapter">${escapeHtml(e.chapter || '')}</span>
+          </div>
+          <div class="slog-text">${escapeHtml(e.text || '')}</div>
+        </div>`;
+    }).join('') || '<p class="slog-empty">No entries yet.</p>';
+
+    // Hall of Campaigns
+    let hallRows = '';
+    for (const c of (allCampaigns || [])) {
+      const isActive  = !c.archived_at;
+      const statusCls = isActive ? 'hall-active' : c.archive_reason === 'completed' ? 'hall-complete' : 'hall-fallen';
+      const statusLbl = isActive ? 'Active' : c.archive_reason === 'completed' ? 'Complete' : 'Fallen';
+      hallRows += `
+        <tr class="${statusCls}">
+          <td>${c.campaign_number}</td>
+          <td>${escapeHtml(c.title || '')}</td>
+          <td>${isActive ? qd : (c.quest_days_reached || '—')}</td>
+          <td>${c.best_streak || '—'}</td>
+          <td>${c.avg_wake_minutes ? minutesToTimeStr(c.avg_wake_minutes) : '—'}</td>
+          <td>${statusLbl}</td>
+        </tr>`;
+    }
+
+    questHtml = `
+      <!-- Quest: The Chronicle section -->
+      <div class="stats-card">
+        <h2 class="stats-section-title">⚔️ The Chronicle</h2>
+
+        <!-- Campaign status -->
+        <div class="quest-stat-campaign">
+          <div class="quest-stat-campaign-title">${escapeHtml(questCampaign.title)} — Campaign ${questCampaign.campaign_number}</div>
+          <div class="quest-stat-day">Quest Day ${qd} of ${totalDays}</div>
+          <div class="quest-road-visual stats-road">${roadDots}</div>
+          <div class="quest-stat-lifetime">Lifetime quest days (all campaigns): <strong>${questState.lifetime_quest_days}</strong></div>
+        </div>
+
+        <!-- Chapter map -->
+        <h3 class="quest-sub-title">Chapter Map</h3>
+        <div class="cmap-grid">${chapterMap}</div>
+
+        <!-- Story log -->
+        <h3 class="quest-sub-title">The Story Log</h3>
+        <div class="slog-panel">${logRows}</div>
+
+        <!-- Hall of Campaigns -->
+        <h3 class="quest-sub-title">Hall of Campaigns</h3>
+        <div class="table-scroll">
+          <table class="admin-table stats-table hall-table">
+            <thead><tr><th>#</th><th>Title</th><th>Quest Days</th><th>Best Streak</th><th>Avg Wake</th><th>Status</th></tr></thead>
+            <tbody>${hallRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -301,6 +403,8 @@ function renderStatsPage(d) {
         </table>
       </div>
     </div>
+
+    ${questHtml}
 
   </div>
 

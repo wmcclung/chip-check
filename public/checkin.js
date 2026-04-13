@@ -16,6 +16,29 @@
   overlay.addEventListener('click', dismissOverlay);
 })();
 
+// ── Quest story log modal ─────────────────────────────────────────────────────
+(function () {
+  var btn   = document.getElementById('quest-log-btn');
+  var modal = document.getElementById('quest-log-modal');
+  var close = document.getElementById('quest-log-close');
+  if (!btn || !modal) return;
+
+  btn.addEventListener('click', function () {
+    modal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  });
+
+  function closeModal() {
+    modal.classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+
+  if (close) close.addEventListener('click', closeModal);
+  modal.addEventListener('click', function (e) {
+    if (e.target === modal) closeModal();
+  });
+})();
+
 // ── Time milestone unlock overlay ─────────────────────────────────────────────
 (function () {
   var overlay = document.getElementById('time-milestone-overlay');

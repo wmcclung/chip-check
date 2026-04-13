@@ -1,7 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node -e ':*)"
+      "Bash(node -e ':*)",
+      "Bash(node -e \"require\\('./quest'\\)\")",
+      "Bash(node -e \"const db = require\\('./db'\\); console.log\\(typeof db.getQuestState, typeof db.getCurrentCampaign, typeof db.updateQuestState, typeof db.archiveCampaign, typeof db.createNewCampaign\\)\")",
+      "Bash(node -e \"require\\('./routes/checkin'\\)\")",
+      "Bash(node --check quest.js)",
+      "Read(//c/Users/wpmcc/.claude/projects/c--Users-wpmcc-morning-accountability/**)",
+      "Bash(python3 -c ':*)",
+      "Read(//c/Users/wpmcc/.claire/projects/c--Users-wpmcc-morning-accountability/**)",
+      "Bash(node --check routes/story.js)",
+      "Bash(node --check server.js routes/checkin.js routes/admin.js routes/story.js routes/stats.js db.js quest.js email.js)",
+      "Bash(node --check server.js quest.js routes/checkin.js db.js)"
     ]
   }
 }
