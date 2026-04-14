@@ -92,29 +92,31 @@ function buildQuestEmailSection(quest) {
     return '<span style="color:#3a3a3a">○</span>';
   }).join(' ');
 
+  // Helper: render all paragraphs of a text block into inline-styled <p> tags
+  const renderParas = (text, style) =>
+    (text || '').split('\n\n').filter(p => p.trim())
+      .map(p => `<p style="${style};margin:0 0 0.9em">${p.trim()}</p>`)
+      .join('');
+
   // Special narratives (chronicle_begins, personal_best, before_7am, fellowship_regroups)
   const specials = Array.isArray(quest.specials) ? quest.specials : [];
   const specialsHtml = specials.map(s => {
-    const text = s.text || '';
-    const firstSPara = text.split('\n\n').filter(p => p.trim())[0] || '';
     return `
       <div style="border-left:2px solid rgba(200,169,110,0.3);padding:8px 12px;margin:0 0 12px;background:rgba(200,169,110,0.04)">
         ${s.title ? `<p style="color:#8a7a5a;font-size:11px;font-weight:bold;letter-spacing:0.12em;text-transform:uppercase;margin:0 0 6px">${s.title}</p>` : ''}
-        <p style="color:#a89060;font-size:13px;font-style:italic;line-height:1.7;margin:0">${firstSPara}</p>
+        ${renderParas(s.text, 'color:#a89060;font-size:13px;font-style:italic;line-height:1.7')}
       </div>`;
   }).join('');
 
-  // Daily narrative (first paragraph only to keep email short)
-  const dailyText = quest.daily_text || '';
-  const firstPara = dailyText.split('\n\n').filter(p => p.trim())[0] || '';
+  // Daily narrative (full text)
+  const dailyParasHtml = renderParas(quest.daily_text, 'color:#a89060;font-size:13px;line-height:1.7');
 
   // Milestone section
   let milestoneHtml = '';
   if (quest.milestone) {
-    const firstMPara = quest.milestone.text.split('\n\n').filter(p => p.trim())[0] || '';
     milestoneHtml = `
       <p style="color:#f0c060;font-size:12px;font-weight:bold;margin:12px 0 6px;letter-spacing:0.1em;text-transform:uppercase">✦ Milestone Reached ✦</p>
-      <p style="color:#c8a96e;font-size:13px;font-style:italic;line-height:1.6;margin:0">${firstMPara}</p>`;
+      ${renderParas(quest.milestone.text, 'color:#c8a96e;font-size:13px;font-style:italic;line-height:1.6')}`;
   }
 
   // Decision made section
@@ -137,7 +139,7 @@ function buildQuestEmailSection(quest) {
       <p style="color:#8a7a5a;font-size:11px;letter-spacing:1px;margin:0 0 10px">📍 ${quest.location || ''}</p>
       <p style="color:#5a4a2a;font-size:13px;letter-spacing:2px;margin:0 0 12px">${dots}</p>
       ${specialsHtml}
-      <p style="color:#a89060;font-size:13px;line-height:1.7;margin:8px 0">${firstPara}</p>
+      ${dailyParasHtml}
       ${milestoneHtml}
       ${decisionHtml}
     </div>`;
