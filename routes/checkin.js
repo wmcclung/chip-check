@@ -21,11 +21,14 @@ const {
   getCurrentCampaign,
   updateQuestState,
   insertQuestArtifact,
+  getDecisionLog,
+  saveDecision,
 } = require('../db');
 const { getSuccessQuote, getFailureQuote, getMilestone, timeMilestones } = require('../quotes');
 const {
   CAMPAIGN_1,
   ARTIFACTS,
+  DECISION_ECHOES,
   SPECIAL_NARRATIVES,
   getChapter,
   isMilestoneDay,
@@ -194,6 +197,7 @@ router.get('/', async (req, res) => {
         const qd      = qs.quest_day;
         const chapter = getChapter(Math.max(qd, 1), CAMPAIGN_1);
         const log     = Array.isArray(qs.story_log) ? qs.story_log : [];
+
         questData = {
           quest_day:           qd,
           lifetime_quest_days: qs.lifetime_quest_days,
@@ -217,6 +221,91 @@ router.get('/', async (req, res) => {
       missStatsData = await getMissStats();
     }
 
+    // Decision gate: override 'pending' screen when a chapter decision is waiting
+    let pendingDecisionData = null;
+    if (screen === 'pending') {
+      try {
+        const qs = await getQuestState();
+        if (qs && qs.quest_day >= 5) {
+          const qd      = qs.quest_day;
+          const chapter = getChapter(Math.max(qd, 1), CAMPAIGN_1); // current chapter (narrative + display)
+          const decisionLog = await getDecisionLog();
+
+          // On catch-up days (qd % 5 === 1, qd >= 6) the pending decision belongs to
+          // the PREVIOUS chapter — the one whose milestone day was yesterday.
+          // On milestone days (qd % 5 === 0) it belongs to the current chapter.
+          let decisionChapter    = chapter;
+          let decisionChapterKey = `c${chapter.number}`;
+          if (qd % 5 === 1 && qd >= 6) {
+            const prevChapterNum = Math.floor(qd / 5); // qd=6→1, qd=11→2, qd=16→3 …
+            const prevCh = CAMPAIGN_1.chapters.find(c => c.number === prevChapterNum);
+            if (prevCh && prevCh.decision) {
+              decisionChapter    = prevCh;
+              decisionChapterKey = `c${prevChapterNum}`;
+            }
+          }
+
+          if (decisionChapter && decisionChapter.decision) {
+            const isMilestone = isMilestoneDay(qd);
+            const isCatchUp   = qd % 5 === 1 && qd >= 6;
+            const pending = (isMilestone || isCatchUp) && !decisionLog[decisionChapterKey];
+
+            if (pending) {
+              screen = 'decision';
+
+              // Narrative variant comes from the CURRENT chapter (where Chip is today).
+              // Use open hour as proxy for today's time (not checked in yet).
+              const decWakeRows  = await getWakeStats();
+              const prevMinutes  = decWakeRows[0] ? decWakeRows[0].checkin_minutes : null;
+              const decTier      = prevMinutes != null
+                ? getPerformanceTier(openHour * 60, prevMinutes)
+                : 'standard';
+              const decRecentIds = Array.isArray(qs.last_variant_ids) ? qs.last_variant_ids : [];
+              const decVariant   = pickVariant(chapter, decTier, decRecentIds);
+
+              const decNow    = new Date();
+              const decCtDate = new Date(decNow.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+              const decMonths = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+              const decDays   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+              const decTplData = {
+                checkinTime:   '',
+                month:         decMonths[decCtDate.getMonth()],
+                dayOfWeek:     decDays[decCtDate.getDay()],
+                streak,
+                questDay:      qd,
+                decisionEcho1: '',
+                decisionEcho2: '',
+                decisionEcho3: '',
+              };
+
+              const decDailyText = renderText(decVariant.text, decTplData);
+              // Milestone text only on actual milestone days, from the current chapter.
+              // Catch-up days never show it — the milestone rendered on the prior day's screen.
+              const decMilestoneText = isMilestone
+                ? renderText(chapter.milestone, decTplData)
+                : null;
+
+              const decCampaign = await getCurrentCampaign();
+
+              pendingDecisionData = {
+                chapterKey:     decisionChapterKey,
+                chapterNumber:  chapter.number,         // current chapter for header display
+                chapterTitle:   chapter.title,
+                location:       chapter.location,
+                questDay:       qd,
+                isMilestone,
+                milestoneText:  decMilestoneText,
+                dailyText:      decDailyText,
+                decisionPrompt: decisionChapter.decision.prompt,  // from the chapter whose decision is pending
+                choices:        decisionChapter.decision.choices,
+                campaignTitle:  decCampaign ? decCampaign.title : 'The Emberstone Chronicles',
+              };
+            }
+          }
+        }
+      } catch (_) { /* don't crash check-in on decision errors */ }
+    }
+
     res.send(renderCheckinPage({
       screen, name, streak, bestStreak, timeStr, dateDisplay,
       openHour, deadlineHour,
@@ -230,6 +319,7 @@ router.get('/', async (req, res) => {
       todayTimeMilestones,
       missStatsData,
       questData,
+      pendingDecisionData,
     }));
   } catch (err) {
     console.error('[GET /]', err);
@@ -339,8 +429,7 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
         const emberLevel     = getEmberLevel(checkinMinutes);
 
         // Variant rotation — avoid last 3 used IDs
-        const recentIds      = Array.isArray(qs.last_variant_ids) ? qs.last_variant_ids : [];
-        const variantObj     = pickVariant(chapter, tier, recentIds);
+        const recentIds = Array.isArray(qs.last_variant_ids) ? qs.last_variant_ids : [];
 
         // Build template data
         const now     = new Date();
@@ -348,21 +437,63 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
         const months  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
         const days    = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
         const templateData = {
-          checkinTime: checkinTimeStr,
-          month:       months[ctDate.getMonth()],
-          dayOfWeek:   days[ctDate.getDay()],
-          streak:      streak,
-          questDay:    newQuestDay,
+          checkinTime:    checkinTimeStr,
+          month:          months[ctDate.getMonth()],
+          dayOfWeek:      days[ctDate.getDay()],
+          streak:         streak,
+          questDay:       newQuestDay,
+          decisionEcho1:  '',
+          decisionEcho2:  '',
+          decisionEcho3:  '',
         };
-        const dailyText  = renderText(variantObj.text, templateData);
-        const pullAppears = variantObj.pull_appears || false;
 
-        // Update variant ID rotation
-        const newRecentIds = [...recentIds, variantObj.id].slice(-10);
+        // Fetch decision log once — used for echo resolution and email reporting
+        let decisionLog = {};
+        try { decisionLog = await getDecisionLog(); } catch (_) {}
 
-        // Milestone
+        // Resolve decision echoes at day 60
+        if (newQuestDay === 60) {
+          templateData.decisionEcho1 = decisionLog.c9  ? (DECISION_ECHOES.c9[decisionLog.c9]   || '') : '';
+          templateData.decisionEcho2 = decisionLog.c10 ? (DECISION_ECHOES.c10[decisionLog.c10] || '') : '';
+          templateData.decisionEcho3 = decisionLog.c12 ? (DECISION_ECHOES.c12[decisionLog.c12] || '') : '';
+        }
+
+        // Scheduled entries — check every day covered by this advance so a 2-day
+        // jump never silently skips an entry pinned to the intermediate day.
+        const oldQuestDay  = qs.quest_day;
+        const daysToCheck  = fullAdvance === 2
+          ? [oldQuestDay + 1, oldQuestDay + 2]
+          : [oldQuestDay + 1];
+
+        const scheduledEntries = [];
+        for (const day of daysToCheck) {
+          const dayChapter = getChapter(Math.max(day, 1), CAMPAIGN_1);
+          if (dayChapter && dayChapter.scheduled) {
+            const entry = dayChapter.scheduled.find(s => s.quest_day === day);
+            if (entry) scheduledEntries.push(entry);
+          }
+        }
+
+        let dailyText, pullAppears, variantId, newRecentIds;
+        if (scheduledEntries.length > 0) {
+          // Concatenate all found entries in chronological order.
+          dailyText   = scheduledEntries
+            .map(e => renderText(e.text, templateData))
+            .join('\n\n');
+          pullAppears  = scheduledEntries.some(e => e.pull_appears);
+          variantId    = scheduledEntries[scheduledEntries.length - 1].id;
+          newRecentIds = [...recentIds, ...scheduledEntries.map(e => e.id)].slice(-10);
+        } else {
+          const variantObj = pickVariant(chapter, tier, recentIds);
+          dailyText        = renderText(variantObj.text, templateData);
+          pullAppears      = variantObj.pull_appears || false;
+          variantId        = variantObj.id;
+          newRecentIds     = [...recentIds, variantObj.id].slice(-10);
+        }
+
+        // Milestone — run through renderText so {{decision_echo_*}} slots resolve
         const milestone = isMilestoneDay(newQuestDay)
-          ? { text: chapter.milestone, chapter_title: chapter.title }
+          ? { text: renderText(chapter.milestone, templateData), chapter_title: chapter.title }
           : null;
 
         // Personal best check
@@ -413,7 +544,7 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
           pull_appears:   pullAppears,
           artifact_found: artifactsAwarded.length > 0 ? artifactsAwarded[0].id : null,
           ember_level:    emberLevel,
-          variant_id:     variantObj.id,
+          variant_id:     variantId,
           tier:           tier,
         });
 
@@ -439,6 +570,39 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
           }
         }
 
+        // Compute decision_made for email.
+        // Primary case: any milestone day where the chapter decision was already recorded.
+        // Special case: quest day 5 (chronicle_begins email) — surface the C1 decision
+        //   consequence there if the decision was made before this check-in.
+        let decisionMadeData = null;
+        if (isMilestoneDay(newQuestDay) && chapter.decision) {
+          const madeChoiceId = decisionLog[`c${chapter.number}`];
+          if (madeChoiceId) {
+            const choice = chapter.decision.choices.find(c => c.id === madeChoiceId);
+            if (choice) {
+              decisionMadeData = {
+                prompt:       chapter.decision.prompt,
+                choice_label: choice.label,
+                consequence:  choice.consequence,
+              };
+            }
+          }
+        }
+        if (!decisionMadeData && newQuestDay === 5) {
+          const c1Chapter    = CAMPAIGN_1.chapters.find(c => c.number === 1);
+          const c1ChoiceId   = decisionLog['c1'];
+          if (c1Chapter && c1ChoiceId) {
+            const choice = c1Chapter.decision.choices.find(c => c.id === c1ChoiceId);
+            if (choice) {
+              decisionMadeData = {
+                prompt:       c1Chapter.decision.prompt,
+                choice_label: choice.label,
+                consequence:  choice.consequence,
+              };
+            }
+          }
+        }
+
         questResult = {
           quest_day:           newQuestDay,
           lifetime_quest_days: newLifetime,
@@ -449,13 +613,14 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
           pull_appears:        pullAppears,
           ember_level:         emberLevel,
           tier:                tier,
-          variant_id:          variantObj.id,
+          variant_id:          variantId,
           milestone,
           specials,
           artifacts_awarded:   artifactsAwarded,
           campaign_title:      campaign.title,
           progress_pct:        Math.min(100, Math.round((newQuestDay / CAMPAIGN_1.total_days) * 100)),
           total_days:          CAMPAIGN_1.total_days,
+          decision_made:       decisionMadeData,
         };
 
         // Handle campaign completion at day 60
@@ -505,6 +670,27 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
   }
 });
 
+// ── POST /decision ────────────────────────────────────────────────────────────
+
+router.post('/decision', async (req, res) => {
+  try {
+    const { chapter_key, choice_id } = req.body;
+
+    if (!chapter_key || !/^c(1[0-2]|[1-9])$/.test(chapter_key)) {
+      return res.status(400).json({ success: false, error: 'Invalid chapter_key.' });
+    }
+    if (!choice_id || !String(choice_id).startsWith(chapter_key + '_')) {
+      return res.status(400).json({ success: false, error: 'Invalid choice_id.' });
+    }
+
+    await saveDecision(String(chapter_key), String(choice_id));
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[POST /decision]', err);
+    res.status(500).json({ success: false, error: 'Server error.' });
+  }
+});
+
 // ── HTML renderer ─────────────────────────────────────────────────────────────
 
 function renderCheckinPage(data) {
@@ -518,6 +704,7 @@ function renderCheckinPage(data) {
     todayTimeMilestones = [],
     missStatsData,
     questData,
+    pendingDecisionData = null,
   } = data;
 
   let bodyContent = '';
@@ -724,6 +911,97 @@ function renderCheckinPage(data) {
         <div class="status-label">UPLOADING...</div>
         <div class="spinner"></div>
       </div>`;
+
+  } else if (screen === 'decision' && pendingDecisionData) {
+    const {
+      chapterKey, chapterNumber, chapterTitle, location,
+      questDay, isMilestone, milestoneText, dailyText,
+      decisionPrompt, choices, campaignTitle,
+    } = pendingDecisionData;
+
+    const decNarrativeHtml = cleanText(dailyText || '')
+      .split('\n\n')
+      .filter(p => p.trim())
+      .map(p => `<p class="quest-narrative-p">${escapeHtml(p.trim())}</p>`)
+      .join('');
+
+    const decMilestoneHtml = buildMilestoneHtml(milestoneText);
+
+    const choiceCards = choices.map(c => `
+      <button class="decision-card" data-choice="${escapeHtml(c.id)}" onclick="selectDecision(this)">
+        <span class="decision-card-label">${escapeHtml(c.label)}</span>
+      </button>`).join('');
+
+    bodyContent = `
+      <div class="decision-page" id="decision-screen" data-chapter-key="${escapeHtml(chapterKey)}">
+        <div class="quest-section">
+          <div class="quest-header-row">
+            <div class="quest-flame-wrap">${buildFlameSvg(streak || 0, false)}</div>
+            <div class="quest-header-info">
+              <div class="quest-campaign-title">⚔️ ${escapeHtml(campaignTitle || 'The Emberstone Chronicles')}</div>
+              <div class="quest-day-label">Quest Day ${questDay}</div>
+            </div>
+          </div>
+
+          ${buildRoadProgress(questDay)}
+
+          <div class="quest-chapter-row">
+            <span class="quest-chapter-num">Ch. ${chapterNumber}</span>
+            <span class="quest-chapter-title">${escapeHtml(chapterTitle || '')}</span>
+            <span class="quest-location">📍 ${escapeHtml(location || '')}</span>
+          </div>
+
+          <div class="quest-body">
+            ${decMilestoneHtml}
+            <div class="quest-narrative">${decNarrativeHtml}</div>
+
+            <hr class="decision-separator">
+
+            <p class="decision-prompt">${escapeHtml(decisionPrompt)}</p>
+
+            <div class="decision-choices">
+              ${choiceCards}
+            </div>
+
+            <button class="decision-confirm-btn" id="decision-confirm-btn" disabled>CONFIRM CHOICE</button>
+          </div>
+        </div>
+      </div>
+      <script>
+      (function() {
+        var selectedChoice = null;
+        var chKey = document.getElementById('decision-screen').getAttribute('data-chapter-key');
+        window.selectDecision = function(el) {
+          document.querySelectorAll('.decision-card').forEach(function(c) {
+            c.classList.remove('decision-card--selected');
+          });
+          el.classList.add('decision-card--selected');
+          selectedChoice = el.getAttribute('data-choice');
+          document.getElementById('decision-confirm-btn').disabled = false;
+        };
+        document.getElementById('decision-confirm-btn').addEventListener('click', function() {
+          if (!selectedChoice) return;
+          var btn = this;
+          btn.disabled = true;
+          btn.textContent = 'Saving...';
+          fetch('/decision', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chapter_key: chKey, choice_id: selectedChoice }),
+          }).then(function(r) { return r.json(); }).then(function(d) {
+            if (d.success) {
+              location.href = '/';
+            } else {
+              btn.disabled = false;
+              btn.textContent = 'CONFIRM CHOICE';
+            }
+          }).catch(function() {
+            btn.disabled = false;
+            btn.textContent = 'CONFIRM CHOICE';
+          });
+        });
+      })();
+      </script>`;
   }
 
   return `<!DOCTYPE html>
@@ -780,7 +1058,7 @@ function buildRoadProgress(questDay) {
 function buildSpecialsHtml(specials) {
   if (!specials || specials.length === 0) return '';
   return specials.map(s => {
-    const paragraphs = s.text
+    const paragraphs = cleanText(s.text || '')
       .split('\n\n')
       .filter(p => p.trim())
       .map(p => `<p class="quest-special-p">${escapeHtml(p.trim())}</p>`)
@@ -791,16 +1069,16 @@ function buildSpecialsHtml(specials) {
       personal_best:       '🏆 Personal Best',
       bonus_early:         '⚡ Before 7 AM',
     };
-    return `<div class="quest-special quest-special-${s.type}">
-      <div class="quest-special-label">${labelMap[s.type] || '⚔️'}</div>
+    return `<div class="quest-special quest-special-${s.id}">
+      <div class="quest-special-label">${labelMap[s.id] || '⚔️'}</div>
       ${paragraphs}
     </div>`;
   }).join('');
 }
 
-function buildMilestoneHtml(milestone) {
-  if (!milestone) return '';
-  const paragraphs = milestone.text
+function buildMilestoneHtml(milestoneText) {
+  if (!milestoneText) return '';
+  const paragraphs = cleanText(milestoneText)
     .split('\n\n')
     .filter(p => p.trim())
     .map(p => `<p class="quest-milestone-p">${escapeHtml(p.trim())}</p>`)
@@ -809,7 +1087,6 @@ function buildMilestoneHtml(milestone) {
     <div class="quest-milestone-card">
       <div class="quest-milestone-label">✦ Milestone Reached ✦</div>
       ${paragraphs}
-      <blockquote class="quest-milestone-quote">"${escapeHtml(milestone.quote)}"</blockquote>
     </div>`;
 }
 
@@ -839,25 +1116,25 @@ function buildQuestSection(qd, streak) {
   const entry = qd.last_log_entry;
   if (!entry) return '';
 
-  const narrativeHtml = entry.text
+  const narrativeHtml = cleanText(entry.daily_text || '')
     .split('\n\n')
     .filter(p => p.trim())
     .map(p => `<p class="quest-narrative-p">${escapeHtml(p.trim())}</p>`)
     .join('');
 
-  const specials  = entry.specials  || [];
-  const milestone = entry.milestone || null;
+  const specials       = entry.specials       || [];
+  const milestoneText  = entry.milestone_text || null;
 
   // Build story log modal content
   const logEntries = (qd.story_log || []).slice().reverse(); // newest first
   const logRows = logEntries.map(e => `
-    <div class="slog-entry slog-${e.type || 'standard'}">
+    <div class="slog-entry slog-${e.tier || 'standard'}">
       <div class="slog-meta">
         <span class="slog-date">${escapeHtml(e.date || '')}</span>
         <span class="slog-qday">Day ${e.quest_day || 0}</span>
-        <span class="slog-chapter">${escapeHtml(e.chapter || '')}</span>
+        <span class="slog-chapter">${escapeHtml(e.chapter_title || '')}</span>
       </div>
-      <div class="slog-text">${escapeHtml(e.text || '')}</div>
+      <div class="slog-text">${escapeHtml(e.daily_text || '')}</div>
     </div>`).join('');
 
   return `
@@ -881,7 +1158,7 @@ function buildQuestSection(qd, streak) {
       <div class="quest-body">
         ${buildSpecialsHtml(specials)}
         <div class="quest-narrative">${narrativeHtml}</div>
-        ${buildMilestoneHtml(milestone)}
+        ${buildMilestoneHtml(milestoneText)}
       </div>
 
       <button class="quest-log-btn" id="quest-log-btn">Read your journey →</button>
@@ -900,6 +1177,17 @@ function buildQuestSection(qd, streak) {
       </div>
     </div>`;
 }
+
+function isPreviousMilestoneUnresolved(questDay, decisionLog, chapterKey) {
+  if (questDay % 5 !== 1 || questDay < 6) return false;
+  return !decisionLog[chapterKey];
+}
+
+function cleanText(raw) {
+  if (!raw) return '';
+  return raw.split('\n').map(l => l.trim()).join('\n');
+}
+
 
 function escapeHtml(str) {
   if (!str) return '';

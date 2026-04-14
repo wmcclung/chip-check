@@ -28,6 +28,7 @@ const {
   archiveCampaign,
   createNewCampaign,
   getAllCampaigns,
+  getDecisionLog,
 } = require('../db');
 const {
   CAMPAIGN_1,
@@ -155,12 +156,14 @@ router.get('/admin', requireAuth, withTimeout(async (req, res) => {
   const history    = await getRecentCheckins(30);
   const friends    = await getAllFriends();
   const bestStreak = parseInt(await getSetting('best_streak') || '0', 10);
-  const questState   = await getQuestState();
+  const questState    = await getQuestState();
   const questCampaign = await getCurrentCampaign();
   const allCampaigns  = await getAllCampaigns();
-  const wakeStats    = await getWakeStats();
+  const wakeStats     = await getWakeStats();
+  let decisionLog     = {};
+  try { decisionLog = await getDecisionLog(); } catch (_) {}
 
-  res.send(adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr, wakeGoalTime, chipPhone, chipEmail, questState, questCampaign, allCampaigns, wakeStats }));
+  res.send(adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr, wakeGoalTime, chipPhone, chipEmail, questState, questCampaign, allCampaigns, wakeStats, decisionLog }));
   console.log('[GET /admin] Route complete, response sent');
 }));
 
@@ -430,6 +433,17 @@ router.post('/admin/quest/trigger-complete', requireAuth, withTimeout(async (req
   res.json({ ok: true, message: `Campaign ${campaign.campaign_number} marked completed. New campaign created (id ${newId}).` });
 }));
 
+// ── POST /admin/quest/decisions/clear ────────────────────────────────────────
+
+router.post('/admin/quest/decisions/clear', requireAuth, withTimeout(async (req, res) => {
+  try {
+    await updateQuestState({ decision_log: {} });
+    res.json({ ok: true, success: true, message: 'Decision log cleared.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Server error.' });
+  }
+}));
+
 // ── POST /admin/test/reset-today ─────────────────────────────────────────────
 
 router.post('/admin/test/reset-today', requireAuth, withTimeout(async (req, res) => {
@@ -573,7 +587,7 @@ function statusBadge(status) {
   return map[status] || `<span class="badge">${escapeHtml(status)}</span>`;
 }
 
-function adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr, wakeGoalTime, chipPhone, chipEmail, questState, questCampaign, allCampaigns, wakeStats }) {
+function adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr, wakeGoalTime, chipPhone, chipEmail, questState, questCampaign, allCampaigns, wakeStats, decisionLog = {} }) {
   const activeCount = friends.filter(f => f.active).length;
 
   let historyRows  = '';
@@ -880,6 +894,7 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
               <div class="qas-item"><span class="qas-label">Pending Regroup</span><span class="qas-val">${questState.pending_regroup ? '⚠️ Yes' : 'No'}</span></div>
               <div class="qas-item"><span class="qas-label">Last 3 Variants</span><span class="qas-val" style="font-size:0.78rem">${(Array.isArray(questState.last_variant_ids) ? questState.last_variant_ids.slice(-3) : []).join(', ') || '—'}</span></div>
               <div class="qas-item"><span class="qas-label">Artifacts Found</span><span class="qas-val" style="font-size:0.78rem">${(Array.isArray(questState.artifacts_found) ? questState.artifacts_found : []).join(', ') || 'none'}</span></div>
+              <div class="qas-item" style="align-items:flex-start"><span class="qas-label">Decisions</span><span class="qas-val" style="font-size:0.78rem">${Object.keys(decisionLog).length === 0 ? 'No decisions recorded' : Object.entries(decisionLog).sort().map(([k, v]) => `Chapter ${k.slice(1)} (${k}): ${escapeHtml(v)}`).join(' · ')}</span></div>
             </div>
 
             <!-- Override -->
@@ -895,6 +910,7 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
             <div class="test-btn-grid" style="margin-bottom:0.8rem">
               <button class="btn-test" onclick="questAction('trigger-fall',     'Archive current campaign as FALLEN and start a new one.')">Trigger Campaign Fall</button>
               <button class="btn-test" onclick="questAction('trigger-complete', 'Archive current campaign as COMPLETED and start a new one.')">Trigger Campaign Complete</button>
+              <button class="btn-test" onclick="questAction('decisions/clear', 'Reset decision log to empty? This cannot be undone.')">Clear Decision Log</button>
             </div>
             <p id="quest-test-result" class="muted small" style="min-height:1.2em"></p>
 

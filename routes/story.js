@@ -8,8 +8,22 @@ const { ARTIFACTS } = require('../quest');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function cleanText(raw) {
+  if (!raw) return '';
+  return raw.split('\n').map(l => l.trim()).join('\n');
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function emberSvg(level) {
-  // level 1-5, rendered as a small inline SVG flame
   const colors = ['#5a4a3a', '#8a6030', '#c8a96e', '#f0c060', '#ffffff'];
   const color  = colors[Math.max(0, Math.min(4, (level || 1) - 1))];
   return `<svg width="14" height="18" viewBox="0 0 14 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;margin-right:4px">
@@ -34,6 +48,16 @@ function chapterDots(chapterNumber) {
   }).join('');
 }
 
+function toRoman(n) {
+  const vals = [
+    ['XII', 12], ['XI', 11], ['X', 10], ['IX', 9],
+    ['VIII', 8], ['VII', 7], ['VI', 6], ['V', 5],
+    ['IV', 4], ['III', 3], ['II', 2], ['I', 1],
+  ];
+  for (const [r, v] of vals) if (n >= v) return r;
+  return String(n);
+}
+
 // ── GET /story ────────────────────────────────────────────────────────────────
 
 router.get('/story', async (req, res) => {
@@ -43,20 +67,23 @@ router.get('/story', async (req, res) => {
     const allCamps = await getAllCampaigns();
 
     if (!qs || !campaign) {
-      return res.send(storyPage({ entries: [], filter: 'all', sort: 'newest', campaign: null, allCamps: [] }));
+      return res.send(storyPage({ entries: [], filter: 'all', sort: 'newest', mode: 'cards', campaign: null, allCamps: [] }));
     }
 
     const rawLog = Array.isArray(qs.story_log) ? qs.story_log : [];
     const filter = req.query.filter || 'all';
     const sort   = req.query.sort   || 'newest';
+    const mode   = req.query.mode   || 'cards';
 
     let entries = rawLog.filter(e => {
+      if (mode === 'story') return true; // story mode shows everything in order
       if (filter === 'milestones') return !!e.milestone_text;
       if (filter === 'pull')       return !!e.pull_appears;
       return true;
     });
 
-    if (sort === 'oldest') {
+    // Card mode respects the sort param; story mode always reads oldest-first.
+    if (mode !== 'story' && sort === 'newest') {
       entries = [...entries].reverse();
     }
 
@@ -64,17 +91,92 @@ router.get('/story', async (req, res) => {
     const artifactRows = await getQuestArtifacts(campaign.id);
     const foundArtifactIds = artifactRows.map(r => r.artifact_id);
 
-    res.send(storyPage({ entries, filter, sort, campaign, allCamps, qs, foundArtifactIds }));
+    res.send(storyPage({ entries, filter, sort, mode, campaign, allCamps, qs, foundArtifactIds }));
   } catch (err) {
     console.error('[GET /story]', err);
     res.status(500).send('<h1>Server error</h1>');
   }
 });
 
+// ── Story mode renderer ───────────────────────────────────────────────────────
+
+function storyModeHtml(entries) {
+  if (entries.length === 0) {
+    return '<p class="slog-empty">No chronicle entries yet.</p>';
+  }
+
+  // Group entries by chapter number, preserving chronological order within each group.
+  const chapters = [];
+  const chapterMap = new Map();
+  for (const e of entries) {
+    const num = e.chapter_number || 1;
+    if (!chapterMap.has(num)) {
+      const group = { number: num, title: e.chapter_title || '', location: e.location || '', entries: [] };
+      chapters.push(group);
+      chapterMap.set(num, group);
+    }
+    chapterMap.get(num).entries.push(e);
+  }
+
+  const chapterSections = chapters.map((ch, idx) => {
+    const heading = `${toRoman(ch.number)}. ${escapeHtml(ch.title)}`;
+
+    const entryBlocks = ch.entries.map(e => {
+      // Specials (chronicle_begins, fellowship_regroups, etc.)
+      let specialsHtml = '';
+      if (Array.isArray(e.specials) && e.specials.length > 0) {
+        specialsHtml = e.specials.map(s => {
+          const paras = cleanText(s.text || '')
+            .split('\n\n')
+            .filter(p => p.trim())
+            .map(p => `<p class="sm-p">${escapeHtml(p.trim())}</p>`)
+            .join('');
+          return `<div class="sm-special">${paras}</div>`;
+        }).join('');
+      }
+
+      // Daily narrative
+      const narrativeParas = cleanText(e.daily_text || '')
+        .split('\n\n')
+        .filter(p => p.trim())
+        .map(p => `<p class="sm-p">${escapeHtml(p.trim())}</p>`)
+        .join('');
+
+      // Milestone — rendered as a pull-quote block
+      let milestoneHtml = '';
+      if (e.milestone_text) {
+        const mParas = cleanText(e.milestone_text)
+          .split('\n\n')
+          .filter(p => p.trim())
+          .map(p => `<p class="sm-milestone-p">${escapeHtml(p.trim())}</p>`)
+          .join('');
+        milestoneHtml = `<blockquote class="sm-milestone">${mParas}</blockquote>`;
+      }
+
+      return `<div class="sm-entry">${specialsHtml}${narrativeParas}${milestoneHtml}</div>`;
+    }).join('\n');
+
+    const divider = idx < chapters.length - 1
+      ? '<hr class="sm-chapter-divider">'
+      : '';
+
+    return `
+      <section class="sm-chapter">
+        <h2 class="sm-chapter-heading">${heading}</h2>
+        <p class="sm-location">${escapeHtml(ch.location)}</p>
+        ${entryBlocks}
+      </section>
+      ${divider}`;
+  }).join('\n');
+
+  return chapterSections;
+}
+
 // ── Page renderer ─────────────────────────────────────────────────────────────
 
-function storyPage({ entries, filter, sort, campaign, allCamps, qs, foundArtifactIds = [] }) {
+function storyPage({ entries, filter, sort, mode = 'cards', campaign, allCamps, qs, foundArtifactIds = [] }) {
   const totalEntries = qs ? (Array.isArray(qs.story_log) ? qs.story_log.length : 0) : 0;
+  const isStoryMode  = mode === 'story';
 
   function entryCard(e) {
     const isMilestone = !!e.milestone_text;
@@ -92,9 +194,9 @@ function storyPage({ entries, filter, sort, campaign, allCamps, qs, foundArtifac
       missed:    'tier-missed',
     }[tier] || '';
 
-    const paragraphs = (e.daily_text || '').split('\n\n')
+    const paragraphs = cleanText(e.daily_text || '').split('\n\n')
       .filter(p => p.trim())
-      .map(p => `<p>${p.trim().replace(/\n\s*/g, ' ')}</p>`)
+      .map(p => `<p>${p.trim()}</p>`)
       .join('');
 
     let specialsHtml = '';
@@ -102,15 +204,15 @@ function storyPage({ entries, filter, sort, campaign, allCamps, qs, foundArtifac
       specialsHtml = e.specials.map(s => `
         <div class="slog-special">
           ${s.title ? `<div class="slog-special-title">${s.title}</div>` : ''}
-          ${(s.text || '').split('\n\n').filter(p=>p.trim()).map(p=>`<p>${p.trim().replace(/\n\s*/g,' ')}</p>`).join('')}
+          ${cleanText(s.text || '').split('\n\n').filter(p=>p.trim()).map(p=>`<p>${p.trim()}</p>`).join('')}
         </div>`).join('');
     }
 
     let milestoneHtml = '';
     if (isMilestone) {
-      const mParas = (e.milestone_text || '').split('\n\n')
+      const mParas = cleanText(e.milestone_text || '').split('\n\n')
         .filter(p => p.trim())
-        .map(p => `<p>${p.trim().replace(/\n\s*/g, ' ')}</p>`)
+        .map(p => `<p>${p.trim()}</p>`)
         .join('');
       milestoneHtml = `
         <div class="slog-milestone-section">
@@ -146,19 +248,50 @@ function storyPage({ entries, filter, sort, campaign, allCamps, qs, foundArtifac
       </article>`;
   }
 
-  const entriesHtml = entries.length > 0
-    ? entries.map(entryCard).join('\n')
-    : '<p class="slog-empty">No entries yet.</p>';
+  // ── Filter / sort / mode controls ────────────────────────────────────────────
 
-  const filterBtn = (val, label) => `
-    <a href="/story?filter=${val}&sort=${sort}" class="slog-filter-btn ${filter === val ? 'active' : ''}">${label}</a>`;
-  const sortBtn = (val, label) => `
-    <a href="/story?filter=${filter}&sort=${val}" class="slog-sort-btn ${sort === val ? 'active' : ''}">${label}</a>`;
+  const filterBtn = (val, label) => {
+    const active = !isStoryMode && filter === val;
+    return `<a href="/story?filter=${val}&sort=${sort}" class="slog-filter-btn ${active ? 'active' : ''}">${label}</a>`;
+  };
+  const sortBtn = (val, label) => {
+    if (isStoryMode) return '';
+    return `<a href="/story?filter=${filter}&sort=${val}" class="slog-sort-btn ${sort === val ? 'active' : ''}">${label}</a>`;
+  };
+  const storyModeHref = isStoryMode
+    ? `/story?filter=${filter}&sort=${sort}`
+    : `/story?mode=story`;
+  const storyModeBtn = `<a href="${storyModeHref}" class="slog-filter-btn slog-story-mode-btn ${isStoryMode ? 'active' : ''}">Story Mode</a>`;
 
-  // Current campaign header
-  const campNum   = campaign ? campaign.campaign_number : '—';
-  const questDay  = qs ? qs.quest_day : 0;
+  // ── Main content area ─────────────────────────────────────────────────────────
+
+  let mainContent;
+  if (isStoryMode) {
+    mainContent = `
+      <div class="sm-document">
+        <h1 class="sm-title">The Emberstone Chronicles</h1>
+        <p class="sm-subtitle">From Downers Grove to Ashen Peak</p>
+        <hr class="sm-top-divider">
+        ${storyModeHtml(entries)}
+      </div>`;
+  } else {
+    const entriesHtml = entries.length > 0
+      ? entries.map(entryCard).join('\n')
+      : '<p class="slog-empty">No entries yet.</p>';
+    mainContent = `<div class="story-entries">${entriesHtml}</div>`;
+  }
+
+  // ── Campaign header values ────────────────────────────────────────────────────
+
+  const campNum    = campaign ? campaign.campaign_number : '—';
+  const questDay   = qs ? qs.quest_day : 0;
   const chapterNow = Math.min(Math.ceil(questDay / 5), 12);
+
+  // ── Print button (story mode only) ───────────────────────────────────────────
+
+  const printBtn = isStoryMode
+    ? `<button class="sm-print-btn no-print" onclick="window.print()">Print / Save as PDF</button>`
+    : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -167,10 +300,164 @@ function storyPage({ entries, filter, sort, campaign, allCamps, qs, foundArtifac
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>The Emberstone Chronicles</title>
 <link rel="stylesheet" href="/style.css">
+<style>
+/* ── Story Mode styles ────────────────────────────────────────────────── */
+.sm-document {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+}
+.sm-title {
+  font-family: 'Arial Black', Impact, sans-serif;
+  font-size: 1.9rem;
+  color: #c8a96e;
+  text-align: center;
+  letter-spacing: 0.06em;
+  margin: 0 0 8px;
+}
+.sm-subtitle {
+  text-align: center;
+  color: #8a6e3e;
+  font-size: 0.95rem;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  margin: 0 0 28px;
+}
+.sm-top-divider {
+  border: none;
+  border-top: 1px solid #8a6e3e;
+  margin: 0 0 40px;
+}
+.sm-chapter {
+  margin-bottom: 12px;
+}
+.sm-chapter-heading {
+  font-family: 'Arial Black', Impact, sans-serif;
+  font-size: 1.15rem;
+  color: #c8a96e;
+  letter-spacing: 0.06em;
+  margin: 48px 0 4px;
+}
+.sm-location {
+  font-size: 0.78rem;
+  color: #8a6e3e;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin: 0 0 20px;
+}
+.sm-entry {
+  margin-bottom: 0;
+}
+.sm-p {
+  color: #e8dcc8;
+  font-size: 1rem;
+  line-height: 1.85;
+  margin: 0 0 1.1em;
+}
+.sm-special {
+  margin-bottom: 1.2em;
+}
+.sm-special .sm-p {
+  color: #a89060;
+  font-style: italic;
+}
+.sm-milestone {
+  border-left: 2px solid #8a6e3e;
+  margin: 1.6em 0 1.6em 20px;
+  padding: 4px 0 4px 20px;
+}
+.sm-milestone-p {
+  color: #c8a96e;
+  font-size: 0.97rem;
+  line-height: 1.8;
+  margin: 0 0 0.9em;
+  font-style: italic;
+}
+.sm-chapter-divider {
+  border: none;
+  border-top: 1px solid rgba(138, 110, 62, 0.3);
+  margin: 40px 0 0;
+}
+.sm-print-btn {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  background: rgba(200,169,110,0.12);
+  border: 1px solid rgba(200,169,110,0.35);
+  color: #c8a96e;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  padding: 8px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: 'Arial Black', Impact, sans-serif;
+  text-transform: uppercase;
+  z-index: 100;
+}
+.sm-print-btn:hover {
+  background: rgba(200,169,110,0.22);
+}
+.slog-story-mode-btn {
+  border-style: dashed;
+}
+/* ── Print stylesheet ─────────────────────────────────────────────────── */
+@media print {
+  .no-print,
+  .story-header,
+  .story-controls,
+  .story-footer,
+  .story-hall,
+  .story-brand {
+    display: none !important;
+  }
+  body, html {
+    background: #fff !important;
+    color: #111 !important;
+  }
+  .sm-document {
+    max-width: 100%;
+    padding: 0;
+  }
+  .sm-title {
+    color: #222 !important;
+    font-size: 1.6rem;
+  }
+  .sm-subtitle {
+    color: #555 !important;
+  }
+  .sm-top-divider,
+  .sm-chapter-divider {
+    border-top-color: #999 !important;
+  }
+  .sm-chapter-heading {
+    color: #222 !important;
+    page-break-after: avoid;
+  }
+  .sm-location {
+    color: #666 !important;
+  }
+  .sm-p {
+    color: #111 !important;
+  }
+  .sm-special .sm-p {
+    color: #444 !important;
+  }
+  .sm-milestone {
+    border-left-color: #999 !important;
+  }
+  .sm-milestone-p {
+    color: #333 !important;
+  }
+  .story-page {
+    background: #fff !important;
+  }
+}
+</style>
 </head>
 <body>
 <div class="story-page">
-  <header class="story-header">
+  ${printBtn}
+  <header class="story-header ${isStoryMode ? 'no-print' : ''}">
     <div class="story-brand">⚔️ CHIP CHECK</div>
     <h1 class="story-title">The Emberstone Chronicles</h1>
     ${campaign ? `
@@ -186,11 +473,12 @@ function storyPage({ entries, filter, sort, campaign, allCamps, qs, foundArtifac
     </div>` : ''}
   </header>
 
-  <div class="story-controls">
+  <div class="story-controls no-print">
     <div class="slog-filters">
       ${filterBtn('all', 'All entries')}
       ${filterBtn('milestones', 'Milestones only')}
       ${filterBtn('pull', 'The Pull')}
+      ${storyModeBtn}
     </div>
     <div class="slog-sorts">
       ${sortBtn('newest', 'Newest first')}
@@ -198,12 +486,10 @@ function storyPage({ entries, filter, sort, campaign, allCamps, qs, foundArtifac
     </div>
   </div>
 
-  <div class="story-entries">
-    ${entriesHtml}
-  </div>
+  ${mainContent}
 
   ${allCamps.length > 1 ? `
-  <section class="story-hall">
+  <section class="story-hall no-print">
     <h2 class="story-hall-title">Hall of Campaigns</h2>
     <table class="story-hall-table">
       <thead>
@@ -222,7 +508,7 @@ function storyPage({ entries, filter, sort, campaign, allCamps, qs, foundArtifac
     </table>
   </section>` : ''}
 
-  <footer class="story-footer">
+  <footer class="story-footer no-print">
     <a href="/" class="story-back-link">← Back to check-in</a>
   </footer>
 </div>

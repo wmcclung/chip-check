@@ -117,6 +117,19 @@ function buildQuestEmailSection(quest) {
       <p style="color:#c8a96e;font-size:13px;font-style:italic;line-height:1.6;margin:0">${firstMPara}</p>`;
   }
 
+  // Decision made section
+  let decisionHtml = '';
+  if (quest.decision_made) {
+    const { prompt, choice_label, consequence } = quest.decision_made;
+    decisionHtml = `
+      <div style="border-top:1px solid #3a2a00;margin-top:16px;padding-top:16px;">
+        <p style="color:#8a7a5a;font-size:11px;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;">Chapter Decision</p>
+        <p style="color:#a89060;font-size:13px;margin:0 0 8px;font-style:italic;">${prompt}</p>
+        <p style="color:#c8a96e;font-size:13px;margin:0 0 8px;">Chip chose: ${choice_label}</p>
+        <p style="color:#a89060;font-size:13px;line-height:1.7;margin:0;">"${consequence}"</p>
+      </div>`;
+  }
+
   return `
     <div style="border-top:1px solid #3a2a00;margin-top:24px;padding-top:20px">
       <p style="color:#8a7a5a;font-size:11px;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px">The Emberstone Chronicles</p>
@@ -126,6 +139,7 @@ function buildQuestEmailSection(quest) {
       ${specialsHtml}
       <p style="color:#a89060;font-size:13px;line-height:1.7;margin:8px 0">${firstPara}</p>
       ${milestoneHtml}
+      ${decisionHtml}
     </div>`;
 }
 

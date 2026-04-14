@@ -118,6 +118,7 @@ async function init() {
   // New quest_state columns for variant rotation and artifact tracking
   await addColumnIfMissing('quest_state', 'last_variant_ids', "JSONB DEFAULT '[]'");
   await addColumnIfMissing('quest_state', 'artifacts_found',  "JSONB DEFAULT '[]'");
+  await addColumnIfMissing('quest_state', 'decision_log',     "JSONB DEFAULT '{}'");
 
   // Safe column migrations for databases that may predate the notification columns
   await addColumnIfMissing('friends', 'notify_success',   'INTEGER DEFAULT 1');
@@ -487,7 +488,7 @@ async function updateQuestState(fields) {
   const id   = qs.rows[0].id;
   const keys = Object.keys(fields);
   const setClause = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
-  const JSONB_FIELDS = new Set(['story_log', 'last_variant_ids', 'artifacts_found']);
+  const JSONB_FIELDS = new Set(['story_log', 'last_variant_ids', 'artifacts_found', 'decision_log']);
   const values    = keys.map(k => {
     if (JSONB_FIELDS.has(k)) return JSON.stringify(fields[k]);
     return fields[k];
@@ -563,6 +564,31 @@ async function getQuestArtifacts(campaignId) {
   return result.rows;
 }
 
+// ── Decision log helpers ──────────────────────────────────────────────────────
+
+async function getDecisionLog() {
+  const qs = await pool.query(
+    'SELECT decision_log FROM quest_state ORDER BY id DESC LIMIT 1'
+  );
+  if (!qs.rows[0]) return {};
+  const log = qs.rows[0].decision_log;
+  if (typeof log === 'string') return JSON.parse(log);
+  return log || {};
+}
+
+async function saveDecision(chapterKey, choiceId) {
+  const current = await getDecisionLog();
+  current[chapterKey] = choiceId;
+  const qs = await pool.query(
+    'SELECT id FROM quest_state ORDER BY id DESC LIMIT 1'
+  );
+  if (!qs.rows[0]) return;
+  await pool.query(
+    `UPDATE quest_state SET decision_log = $1 WHERE id = $2`,
+    [JSON.stringify(current), qs.rows[0].id]
+  );
+}
+
 module.exports = {
   pool,
   init,
@@ -596,4 +622,6 @@ module.exports = {
   getAllCampaigns,
   insertQuestArtifact,
   getQuestArtifacts,
+  getDecisionLog,
+  saveDecision,
 };
