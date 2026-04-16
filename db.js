@@ -111,6 +111,7 @@ async function init() {
   await addColumnIfMissing('checkins', 'checkin_minutes', 'INTEGER');
   await addColumnIfMissing('checkins', 'quote_text',      'TEXT');
   await addColumnIfMissing('checkins', 'quote_speaker',   'TEXT');
+  await addColumnIfMissing('checkins', 'rivian_text',     'TEXT');
 
   // quest_day on time_milestones
   await addColumnIfMissing('time_milestones', 'quest_day', 'INTEGER');
@@ -141,6 +142,7 @@ async function init() {
     ['wake_goal_time',       '420'],   // 7:00 AM in minutes
     ['chip_phone',           ''],
     ['chip_email',           ''],
+    ['rivian_entry_index',   '{"master":0}'],
   ];
   for (const [key, value] of seeds) {
     await pool.query(
@@ -589,6 +591,18 @@ async function saveDecision(chapterKey, choiceId) {
   );
 }
 
+// ── Rivian entry index helpers ────────────────────────────────────────────────
+
+async function getRivianEntryIndex() {
+  const raw = await getSetting('rivian_entry_index');
+  if (!raw) return { master: 0 };
+  try { return JSON.parse(raw); } catch (_) { return { master: 0 }; }
+}
+
+async function setRivianEntryIndex(indexObj) {
+  await setSetting('rivian_entry_index', JSON.stringify(indexObj));
+}
+
 module.exports = {
   pool,
   init,
@@ -624,4 +638,6 @@ module.exports = {
   getQuestArtifacts,
   getDecisionLog,
   saveDecision,
+  getRivianEntryIndex,
+  setRivianEntryIndex,
 };

@@ -145,9 +145,22 @@ function buildQuestEmailSection(quest) {
     </div>`;
 }
 
+function buildRivianEmailSection(rivianText) {
+  if (!rivianText) return '';
+  const renderParas = (text) =>
+    text.split('\n\n').filter(p => p.trim())
+      .map(p => `<p style="color:#d4c4a0;font-size:13px;font-family:Georgia,'Times New Roman',serif;line-height:1.7;margin:0 0 0.8em">${p.trim().replace(/\n/g, '<br>')}</p>`)
+      .join('');
+  return `
+    <div style="border-top:1px solid #3a2a00;margin-top:24px;padding-top:20px">
+      <p style="color:#8a7a5a;font-size:11px;text-transform:uppercase;letter-spacing:2px;margin:0 0 14px;font-family:'Arial Black',Impact,sans-serif">From the Fellowship</p>
+      ${renderParas(rivianText)}
+    </div>`;
+}
+
 async function sendSuccessEmail(friend, name, selfieUrl, streak, extras = {}) {
   if (!friend.email) return;
-  const { checkinTime, wakeStats, newMilestones = [], quote: storedQuote, quest } = extras;
+  const { checkinTime, wakeStats, newMilestones = [], quote: storedQuote, quest, rivian } = extras;
   const quote = storedQuote || getSuccessQuote(streak);
 
   // ── Milestone unlock section ──────────────────────────────────────────────
@@ -202,6 +215,7 @@ async function sendSuccessEmail(friend, name, selfieUrl, streak, extras = {}) {
     ${milestoneSection}
     ${statsSection}
     ${buildQuestEmailSection(quest)}
+    ${buildRivianEmailSection(rivian)}
   `);
   try {
     await send(friend.email, `✅ ${name} checked in! Streak: ${streak} day${streak === 1 ? '' : 's'} 🔥`, html);

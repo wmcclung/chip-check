@@ -5,6 +5,8 @@ const router  = express.Router();
 const { uploadBuffer }     = require('../cloudinary');
 const { broadcastSuccess } = require('../sms');
 const { broadcastSuccessEmail } = require('../email');
+const { fetchRivianStock } = require('../rivianService');
+const { RIVIAN_DAYS, getNextRivianEntry, populateRivianEntry } = require('../rivianEntries');
 const {
   getSetting,
   setSetting,
@@ -23,6 +25,8 @@ const {
   insertQuestArtifact,
   getDecisionLog,
   saveDecision,
+  getRivianEntryIndex,
+  setRivianEntryIndex,
 } = require('../db');
 const { getSuccessQuote, getFailureQuote, getMilestone, timeMilestones } = require('../quotes');
 const {
@@ -167,6 +171,7 @@ router.get('/', async (req, res) => {
     let todayTimeMilestones = [];
     let missStatsData       = null;
     let questData           = null;
+    let rivianText          = null;
 
     if (screen === 'success') {
       const wakeRows = await getWakeStats();
@@ -189,6 +194,9 @@ router.get('/', async (req, res) => {
         .filter(m => m.achieved_at && m.achieved_at.slice(0, 10) === dateStr)
         .map(m => timeMilestones.find(t => t.key === m.milestone_key))
         .filter(Boolean);
+
+      // Rivian text (stored at check-in time)
+      rivianText = checkin ? (checkin.rivian_text || null) : null;
 
       // Quest state for success screen
       const qs       = await getQuestState();
@@ -320,6 +328,7 @@ router.get('/', async (req, res) => {
       missStatsData,
       questData,
       pendingDecisionData,
+      rivianText,
     }));
   } catch (err) {
     console.error('[GET /]', err);
@@ -641,6 +650,28 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
       console.error('[POST /checkin] Quest advance error (non-fatal):', questErr.message);
     }
 
+    // ── Rivian block ──────────────────────────────────────────────────────────
+    let rivianText = null;
+    if (questResult && RIVIAN_DAYS.includes(questResult.quest_day)) {
+      try {
+        const entryIndex   = await getRivianEntryIndex();
+        const { entry, newIndex } = getNextRivianEntry(entryIndex);
+        await setRivianEntryIndex(newIndex);   // advance regardless of stock success
+
+        const stock = await fetchRivianStock();
+        if (stock) {
+          rivianText = populateRivianEntry(entry, {
+            price:     stock.price,
+            changePct: stock.changePct,
+            questDay:  questResult.quest_day,
+          });
+          await updateCheckin(dateStr, { rivian_text: rivianText });
+        }
+      } catch (rivianErr) {
+        console.error('[POST /checkin] Rivian block error (non-fatal):', rivianErr.message);
+      }
+    }
+
     const name    = await getSetting('primary_user_name') || 'Chip';
     const friends = await getActiveFriends();
 
@@ -654,6 +685,7 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
       newMilestones: newMilestones.map(m => ({ badge: m.badge, text: m.text, speaker: m.speaker })),
       quote,
       quest:         questResult,
+      rivian:        rivianText,
     }).catch(() => {});
 
     res.json({
@@ -663,6 +695,7 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
       newMilestones: newMilestones.map(m => ({ key: m.key, badge: m.badge, text: m.text, speaker: m.speaker })),
       quote:         `"${quote.text}" — ${quote.speaker}`,
       quest:         questResult,
+      rivian:        rivianText,
     });
   } catch (err) {
     console.error('[POST /checkin]', err);
@@ -705,6 +738,7 @@ function renderCheckinPage(data) {
     missStatsData,
     questData,
     pendingDecisionData = null,
+    rivianText          = null,
   } = data;
 
   let bodyContent = '';
@@ -854,6 +888,7 @@ function renderCheckinPage(data) {
           <cite>— ${escapeHtml(successQuote.speaker)}</cite>
         </blockquote>
         ${buildQuestSection(questData, streak)}
+        ${buildFellowshipBlock(rivianText)}
         <a href="/stats" class="stats-link">View your full stats →</a>
         <div class="locked-msg">✅ Checked in today. Come back tomorrow.</div>
       </div>`;
@@ -1175,6 +1210,20 @@ function buildQuestSection(qd, streak) {
           ${logRows || '<p class="slog-empty">No entries yet.</p>'}
         </div>
       </div>
+    </div>`;
+}
+
+function buildFellowshipBlock(rivianText) {
+  if (!rivianText) return '';
+  const paragraphs = rivianText
+    .split('\n\n')
+    .filter(p => p.trim())
+    .map(p => `<p class="fellowship-p">${escapeHtml(p.trim()).replace(/\n/g, '<br>')}</p>`)
+    .join('');
+  return `
+    <div class="fellowship-block">
+      <div class="fellowship-label">From the Fellowship</div>
+      ${paragraphs}
     </div>`;
 }
 

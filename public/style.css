@@ -2226,4 +2226,33 @@ code {
   letter-spacing: 0.06em;
   text-decoration: none;
 }
+
+/* ── Fellowship block (Rivian / Brent) ──────────────────────────────────────── */
+.fellowship-block {
+  width: 100%;
+  margin-top: 1.25rem;
+  padding: 0.9rem 1rem;
+  border-left: 3px solid rgba(200,169,110,0.55);
+  border: 1px solid rgba(200,169,110,0.18);
+  background: rgba(200,169,110,0.04);
+  border-radius: 0 4px 4px 0;
+  text-align: left;
+}
+.fellowship-label {
+  font-family: var(--font-sans);
+  font-size: 0.6rem;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--amber-dim);
+  margin-bottom: 0.75rem;
+}
+.fellowship-p {
+  font-family: var(--font-serif);
+  font-size: 0.85rem;
+  color: rgba(240,232,216,0.82);
+  line-height: 1.7;
+  margin: 0 0 0.7rem;
+}
+.fellowship-p:last-child { margin-bottom: 0; }
 .story-back-link:hover { color: var(--amber); }

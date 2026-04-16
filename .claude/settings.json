@@ -12,7 +12,12 @@
       "Bash(node --check routes/story.js)",
       "Bash(node --check server.js routes/checkin.js routes/admin.js routes/story.js routes/stats.js db.js quest.js email.js)",
       "Bash(node --check server.js quest.js routes/checkin.js db.js)",
-      "Bash(node --check server.js email.js quest.js db.js routes/checkin.js routes/admin.js routes/story.js routes/stats.js routes/join.js)"
+      "Bash(node --check server.js email.js quest.js db.js routes/checkin.js routes/admin.js routes/story.js routes/stats.js routes/join.js)",
+      "Bash(ls c:/Users/wpmcc/morning-accountability/*.js c:/Users/wpmcc/morning-accountability/*.mjs)",
+      "Read(//c/Users/wpmcc/Downloads/**)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\wpmcc\\Downloads"
     ]
   }
 }
