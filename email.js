@@ -267,9 +267,9 @@ async function sendSuccessEmail(friend, name, selfieUrl, streak, extras = {}) {
   }
 }
 
-async function sendMissedEmail(friend, name, missStats = null, questMissed = null) {
+async function sendMissedEmail(friend, name, missStats = null, questMissed = null, quote = null) {
   if (!friend.email) return;
-  const quote = getFailureQuote();
+  if (!quote) quote = getFailureQuote();
 
   let missStatsSection = '';
   if (missStats) {
@@ -362,10 +362,10 @@ async function broadcastSuccessEmail(friends, name, selfieUrl, streak, extras = 
   }
 }
 
-async function broadcastShameEmail(friends, name, missStats = null, questMissed = null) {
+async function broadcastShameEmail(friends, name, missStats = null, questMissed = null, quote = null) {
   const targets = friends.filter(f => f.notify_email !== 0 && f.email && f.notify_missed !== 0);
   for (const friend of targets) {
-    await sendMissedEmail(friend, name, missStats, questMissed);
+    await sendMissedEmail(friend, name, missStats, questMissed, quote);
   }
 }
 

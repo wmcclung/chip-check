@@ -179,7 +179,9 @@ router.get('/', async (req, res) => {
     const successQuote  = (checkin && checkin.quote_text)
       ? { text: checkin.quote_text, speaker: checkin.quote_speaker }
       : getSuccessQuote(streak);
-    const failureQuote  = getFailureQuote();
+    const failureQuote  = (checkin && checkin.quote_text && status === 'missed')
+      ? { text: checkin.quote_text, speaker: checkin.quote_speaker }
+      : getFailureQuote();
     const selfieUrl     = checkin && checkin.selfie_url ? checkin.selfie_url : null;
     const bestStreak    = parseInt(await getSetting('best_streak') || '0', 10);
 

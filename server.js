@@ -34,6 +34,7 @@ const {
 } = require('./quest');
 const { broadcastShame, sendDigest, sendSMS } = require('./sms');
 const { broadcastShameEmail, sendDigestEmail, sendSuccessEmail } = require('./email');
+const { getFailureQuote } = require('./quotes');
 
 const app = express();
 
@@ -114,7 +115,8 @@ cron.schedule('0 * * * *', async () => {
       return;
     }
 
-    await updateCheckin(dateStr, { status: 'missed', streak_at_checkin: 0 });
+    const failureQuote = getFailureQuote();
+    await updateCheckin(dateStr, { status: 'missed', streak_at_checkin: 0, quote_text: failureQuote.text, quote_speaker: failureQuote.speaker });
     console.log(`[CRON DEADLINE] ${dateStr} marked as missed`);
 
     const name    = await getSetting('primary_user_name') || 'Jake';
@@ -141,7 +143,7 @@ cron.schedule('0 * * * *', async () => {
     if (friends.length > 0) {
       const missStats = await getMissStats();
       await broadcastShame(friends, name);
-      await broadcastShameEmail(friends, name, missStats, questMissedData);
+      await broadcastShameEmail(friends, name, missStats, questMissedData, failureQuote);
       console.log(`[CRON DEADLINE] Shame notifications sent to ${friends.length} friends`);
     }
 
@@ -168,7 +170,9 @@ cron.schedule('0 * * * *', async () => {
           tier:           'missed',
         });
 
+        const newQuestDayMiss = Math.min(qs.quest_day + 1, CAMPAIGN_1.total_days);
         await updateQuestState({
+          quest_day:          newQuestDayMiss,
           consecutive_misses: newMisses,
           story_log:          newLog,
           last_updated:       dateStr,
