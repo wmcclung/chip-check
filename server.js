@@ -62,6 +62,7 @@ app.use('/', require('./routes/join'));
 app.use('/', require('./routes/admin'));
 app.use('/', require('./routes/stats'));
 app.use('/', require('./routes/story'));
+app.use('/', require('./routes/archive'));
 
 // ── Cron helpers ──────────────────────────────────────────────────────────────
 
