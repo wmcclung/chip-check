@@ -29,6 +29,17 @@ const {
   setRivianEntryIndex,
 } = require('../db');
 const { getSuccessQuote, getFailureQuote, getMilestone, timeMilestones } = require('../quotes');
+const { selectAdventureDay, isAdventureDay, getTier: getAdventureTier, ADVENTURE_DAYS } = require('../adventureDaySelector');
+const { DAY_7, DAY_12, DAY_13, DAY_18, DAY_22, DAY_24, DAY_27, DAY_32, DAY_34, DAY_39, DAY_42, DAY_52, DAY_57 } = require('../adventureDays');
+const {
+  computeAdventureDayDiscoveries,
+  applyDiscoveries,
+  seedGuaranteedItems,
+  getChapterCounters,
+  buildRevealData,
+  formatChapterCounters,
+  getInitialDiscoveryLog,
+} = require('../discoveryRegistry');
 const {
   CAMPAIGN_1,
   ARTIFACTS,
@@ -45,6 +56,14 @@ const {
 } = require('../quest');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+// Map quest day → adventure day content object from adventureDays.js
+const ADV_DAY_CONTENT = { 7: DAY_7, 12: DAY_12, 13: DAY_13, 18: DAY_18, 22: DAY_22, 24: DAY_24, 27: DAY_27, 32: DAY_32, 34: DAY_34, 39: DAY_39, 42: DAY_42, 52: DAY_52, 57: DAY_57 };
+
+function getAdventureDayText(questDay, variantKey) {
+  const dayObj = ADV_DAY_CONTENT[questDay];
+  return (dayObj && dayObj[variantKey]) ? dayObj[variantKey] : null;
+}
 
 const TREND_THRESHOLD_MINUTES = 10;
 
@@ -483,8 +502,36 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
           }
         }
 
+        // ── Adventure day selection ───────────────────────────────────────────
+        // Check if any day in the advance range is an adventure day.
+        const adventureDayNum = daysToCheck.find(d => isAdventureDay(d));
+        const currentAdvFlags = (typeof qs.adventure_flags === 'object' && qs.adventure_flags)
+          ? { ...qs.adventure_flags }
+          : {};
+        let adventureDayResult = null;
+        if (adventureDayNum) {
+          const advTier   = getAdventureTier(checkinMinutes);
+          const selection = selectAdventureDay(adventureDayNum, advTier, currentAdvFlags);
+          if (selection) {
+            const advText = getAdventureDayText(adventureDayNum, selection.variant_key);
+            if (advText) {
+              adventureDayResult = {
+                day:        adventureDayNum,
+                variant_key: selection.variant_key,
+                flags_to_set: selection.flags_to_set || {},
+                tier:        advTier,
+              };
+            }
+          }
+        }
+
         let dailyText, pullAppears, variantId, newRecentIds;
-        if (scheduledEntries.length > 0) {
+        if (adventureDayResult) {
+          dailyText    = getAdventureDayText(adventureDayResult.day, adventureDayResult.variant_key);
+          pullAppears  = false;
+          variantId    = `adv_${adventureDayResult.day}_${adventureDayResult.variant_key}`;
+          newRecentIds = [...recentIds, variantId].slice(-10);
+        } else if (scheduledEntries.length > 0) {
           // Concatenate all found entries in chronological order.
           dailyText   = scheduledEntries
             .map(e => renderText(e.text, templateData))
@@ -541,20 +588,63 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
           await insertQuestArtifact(chapter.artifact_awarded, campaign.id, newQuestDay);
         }
 
+        // ── Discovery tracking ────────────────────────────────────────────────
+        let newAdvFlags = { ...currentAdvFlags };
+        let discoveryLog = (typeof qs.discovery_log === 'object' && qs.discovery_log && Object.keys(qs.discovery_log).length > 0)
+          ? JSON.parse(JSON.stringify(qs.discovery_log))
+          : getInitialDiscoveryLog();
+
+        if (adventureDayResult) {
+          // Merge flags_to_set into adventure_flags
+          Object.assign(newAdvFlags, adventureDayResult.flags_to_set);
+          // Compute and apply discoveries for this adventure day
+          const discoveries = computeAdventureDayDiscoveries(
+            adventureDayResult.day,
+            adventureDayResult.variant_key,
+            adventureDayResult.tier,
+            newAdvFlags
+          );
+          applyDiscoveries(discoveryLog, discoveries);
+        }
+
+        // Handle forgetting_crossed: fires when quest passes day 47→48+,
+        // earned if archive_tier_18 was blazing or great.
+        if (oldQuestDay < 48 && newQuestDay >= 48) {
+          const archiveTier = newAdvFlags.archive_tier_18;
+          if (archiveTier === 'blazing' || archiveTier === 'great') {
+            applyDiscoveries(discoveryLog, [['chapter_10', 'encounters', 'forgetting_crossed']]);
+          }
+        }
+
+        // On milestone days: seed guaranteed items and compute chapter_summary
+        let chapterSummaryData = null;
+        if (isMilestoneDay(newQuestDay)) {
+          seedGuaranteedItems(discoveryLog, newQuestDay);
+          chapterSummaryData = getChapterCounters(discoveryLog, chapter.number);
+        }
+
+        // Build day-60 reveal before appending to log so it persists in story_log
+        let discoverReveal = null;
+        if (newQuestDay >= CAMPAIGN_1.total_days) {
+          try { discoverReveal = buildRevealData(discoveryLog); } catch (_) {}
+        }
+
         const newLog = appendToLog(qs.story_log, {
-          date:           dateStr,
-          quest_day:      newQuestDay,
-          chapter_number: chapter.number,
-          chapter_title:  chapter.title,
-          location:       chapter.location,
-          daily_text:     dailyText,
-          milestone_text: milestone ? milestone.text : null,
-          specials:       specials,
-          pull_appears:   pullAppears,
-          artifact_found: artifactsAwarded.length > 0 ? artifactsAwarded[0].id : null,
-          ember_level:    emberLevel,
-          variant_id:     variantId,
-          tier:           tier,
+          date:            dateStr,
+          quest_day:       newQuestDay,
+          chapter_number:  chapter.number,
+          chapter_title:   chapter.title,
+          location:        chapter.location,
+          daily_text:      dailyText,
+          milestone_text:  milestone ? milestone.text : null,
+          specials:        specials,
+          pull_appears:    pullAppears,
+          artifact_found:  artifactsAwarded.length > 0 ? artifactsAwarded[0].id : null,
+          ember_level:     emberLevel,
+          variant_id:      variantId,
+          tier:            tier,
+          chapter_summary: chapterSummaryData,
+          discover_reveal: discoverReveal,
         });
 
         await updateQuestState({
@@ -567,7 +657,21 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
           artifacts_found:     artifactsFound,
           story_log:           newLog,
           last_updated:        dateStr,
+          adventure_flags:     newAdvFlags,
+          discovery_log:       discoveryLog,
         });
+
+        // Store chapter_summary on the checkin row for milestone days
+        if (chapterSummaryData) {
+          try {
+            await require('../db').pool.query(
+              'UPDATE checkins SET chapter_summary = $1 WHERE date = $2',
+              [JSON.stringify(chapterSummaryData), dateStr]
+            );
+          } catch (csErr) {
+            console.error('[POST /checkin] chapter_summary store error (non-fatal):', csErr.message);
+          }
+        }
 
         // Update quest_day on time_milestones earned today
         if (newMilestones.length > 0) {
@@ -630,6 +734,8 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
           progress_pct:        Math.min(100, Math.round((newQuestDay / CAMPAIGN_1.total_days) * 100)),
           total_days:          CAMPAIGN_1.total_days,
           decision_made:       decisionMadeData,
+          chapter_summary:     chapterSummaryData,
+          discover_reveal:     discoverReveal,
         };
 
         // Handle campaign completion at day 60
@@ -656,10 +762,10 @@ router.post('/checkin', upload.single('selfie'), async (req, res) => {
       try {
         const entryIndex   = await getRivianEntryIndex();
         const { entry, newIndex } = getNextRivianEntry(entryIndex);
-        await setRivianEntryIndex(newIndex);   // advance regardless of stock success
 
         const stock = await fetchRivianStock();
         if (stock) {
+          await setRivianEntryIndex(newIndex);   // only advance on successful display
           rivianText = populateRivianEntry(entry, {
             price:     stock.price,
             changePct: stock.changePct,
@@ -960,7 +1066,7 @@ function renderCheckinPage(data) {
       .map(p => `<p class="quest-narrative-p">${escapeHtml(p.trim())}</p>`)
       .join('');
 
-    const decMilestoneHtml = buildMilestoneHtml(milestoneText);
+    const decMilestoneHtml = buildMilestoneHtml(milestoneText, null, chapterNumber, chapterTitle);
 
     const choiceCards = choices.map(c => `
       <button class="decision-card" data-choice="${escapeHtml(c.id)}" onclick="selectDecision(this)">
@@ -1111,17 +1217,33 @@ function buildSpecialsHtml(specials) {
   }).join('');
 }
 
-function buildMilestoneHtml(milestoneText) {
+function buildMilestoneHtml(milestoneText, chapterSummary, chapterNumber, chapterTitle) {
   if (!milestoneText) return '';
   const paragraphs = cleanText(milestoneText)
     .split('\n\n')
     .filter(p => p.trim())
     .map(p => `<p class="quest-milestone-p">${escapeHtml(p.trim())}</p>`)
     .join('');
+  const counterHtml = buildChapterCounterHtml(chapterSummary, chapterNumber, chapterTitle);
   return `
     <div class="quest-milestone-card">
       <div class="quest-milestone-label">✦ Milestone Reached ✦</div>
       ${paragraphs}
+      ${counterHtml}
+    </div>`;
+}
+
+function buildChapterCounterHtml(chapterSummary, chapterNumber, chapterTitle) {
+  if (!chapterSummary || !chapterNumber) return '';
+  const formatted = formatChapterCounters(chapterSummary);
+  if (!formatted) return '';
+  const counterLine = formatted === 'full_discovery'
+    ? '<span class="disc-counter-full">Full discovery this chapter.</span>'
+    : escapeHtml(formatted);
+  return `
+    <div class="disc-counter-row">
+      <span class="disc-counter-label">Chapter ${chapterNumber}</span>
+      <span class="disc-counter-values">${counterLine}</span>
     </div>`;
 }
 
@@ -1157,8 +1279,9 @@ function buildQuestSection(qd, streak) {
     .map(p => `<p class="quest-narrative-p">${escapeHtml(p.trim())}</p>`)
     .join('');
 
-  const specials       = entry.specials       || [];
-  const milestoneText  = entry.milestone_text || null;
+  const specials        = entry.specials       || [];
+  const milestoneText   = entry.milestone_text || null;
+  const chapterSummary  = entry.chapter_summary || null;
 
   // Build story log modal content
   const logEntries = (qd.story_log || []).slice().reverse(); // newest first
@@ -1193,8 +1316,10 @@ function buildQuestSection(qd, streak) {
       <div class="quest-body">
         ${buildSpecialsHtml(specials)}
         <div class="quest-narrative">${narrativeHtml}</div>
-        ${buildMilestoneHtml(milestoneText)}
+        ${buildMilestoneHtml(milestoneText, chapterSummary, qd.chapter_number, qd.chapter_title)}
       </div>
+
+      ${entry.discover_reveal ? buildRevealSection(entry.discover_reveal) : ''}
 
       <button class="quest-log-btn" id="quest-log-btn">Read your journey →</button>
     </div>
@@ -1209,6 +1334,43 @@ function buildQuestSection(qd, streak) {
         <div class="quest-modal-body">
           ${logRows || '<p class="slog-empty">No entries yet.</p>'}
         </div>
+      </div>
+    </div>`;
+}
+
+function buildRevealSection(discoverReveal) {
+  if (!discoverReveal) return '';
+
+  const catLabel = { items: 'Item', lore: 'Lore', encounters: 'Encounter' };
+
+  const carriedHtml = discoverReveal.carried.map(ch => {
+    const entries = ch.entries.map(e => {
+      const typeTag = `<span class="reveal-type reveal-${e.category}">${catLabel[e.category] || e.category}</span>`;
+      return `<li class="reveal-item">${typeTag} <span class="reveal-desc">${escapeHtml(e.meta.description)}</span></li>`;
+    }).join('');
+    return `<div class="reveal-chapter"><div class="reveal-chapter-title">Ch. ${ch.chapterNum} · ${escapeHtml(ch.chapterTitle)}</div><ul class="reveal-list">${entries}</ul></div>`;
+  }).join('');
+
+  const missedHtml = discoverReveal.missed.map(ch => {
+    const entries = ch.entries.map(e => {
+      const typeTag = `<span class="reveal-type reveal-${e.category}">${catLabel[e.category] || e.category}</span>`;
+      return `<li class="reveal-item reveal-missed-item">${typeTag} <span class="reveal-desc">${escapeHtml(e.meta.missedText || '')}</span></li>`;
+    }).join('');
+    return `<div class="reveal-chapter"><div class="reveal-chapter-title">Ch. ${ch.chapterNum} · ${escapeHtml(ch.chapterTitle)}</div><ul class="reveal-list">${entries}</ul></div>`;
+  }).join('');
+
+  return `
+    <div class="road-reveal">
+      <div class="reveal-title">THE ROAD YOU WALKED</div>
+
+      <div class="reveal-section">
+        <div class="reveal-section-header">WHAT YOU CARRIED</div>
+        ${carriedHtml || '<p class="reveal-empty">Nothing carried.</p>'}
+      </div>
+
+      <div class="reveal-section">
+        <div class="reveal-section-header">WHAT THE ROAD HELD</div>
+        ${missedHtml || '<p class="reveal-empty">Full discovery — nothing was missed.</p>'}
       </div>
     </div>`;
 }

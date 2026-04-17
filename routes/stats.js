@@ -60,6 +60,15 @@ router.get('/stats', async (req, res) => {
     const questCampaign = await getCurrentCampaign();
     const allCampaigns  = await getAllCampaigns();
 
+    // Discovery totals for stats display
+    let discoveryTotals = null;
+    try {
+      const { getCampaignTotals } = require('../discoveryRegistry');
+      const discoveryLog = (questState && typeof questState.discovery_log === 'object' && questState.discovery_log)
+        ? questState.discovery_log : {};
+      discoveryTotals = getCampaignTotals(discoveryLog);
+    } catch (_) {}
+
     // ── Aggregate stats ───────────────────────────────────────────────────────
     const avg7   = avgMinutes(wakeRows.slice(0, 7));
     const avg30  = avgMinutes(wakeRows.slice(0, 30));
@@ -172,12 +181,68 @@ router.get('/stats', async (req, res) => {
       wakeGoalMin, recentRows, badgeGrid,
       missStats,
       questState, questCampaign, allCampaigns,
+      discoveryTotals,
     }));
   } catch (err) {
     console.error('[GET /stats]', err);
     res.status(500).send('<h1>Server error</h1>');
   }
 });
+
+// ── Discovery stats HTML ──────────────────────────────────────────────────────
+
+function buildDiscoveryStatsHtml(totals, questDay) {
+  if (!totals) return '';
+  const isRevealed = questDay >= 60;
+
+  let chapterRows = '';
+  for (const ch of totals.chapters) {
+    const allFound = ch.items.found === ch.items.total &&
+                     ch.lore.found === ch.lore.total &&
+                     ch.encounters.found === ch.encounters.total;
+    const rowCls = allFound ? 'disc-ch-complete' : '';
+    chapterRows += `
+      <tr class="${rowCls}">
+        <td>Ch. ${ch.number}</td>
+        <td>${ch.items.found}/${ch.items.total}</td>
+        <td>${ch.lore.found}/${ch.lore.total}</td>
+        <td>${ch.encounters.found}/${ch.encounters.total}</td>
+      </tr>`;
+  }
+
+  return `
+    <h3 class="quest-sub-title">🗺️ Discoveries${isRevealed ? ' — The Road You Walked' : ''}</h3>
+    <div class="disc-stats-block">
+      <div class="disc-stats-totals">
+        <div class="disc-stat-item">
+          <span class="disc-stat-num">${totals.overall.found}/${totals.overall.total}</span>
+          <span class="disc-stat-label">Total Discovered</span>
+        </div>
+        <div class="disc-stat-item">
+          <span class="disc-stat-num disc-items">${totals.items.found}/${totals.items.total}</span>
+          <span class="disc-stat-label">Items</span>
+        </div>
+        <div class="disc-stat-item">
+          <span class="disc-stat-num disc-lore">${totals.lore.found}/${totals.lore.total}</span>
+          <span class="disc-stat-label">Lore</span>
+        </div>
+        <div class="disc-stat-item">
+          <span class="disc-stat-num disc-encounters">${totals.encounters.found}/${totals.encounters.total}</span>
+          <span class="disc-stat-label">Encounters</span>
+        </div>
+        <div class="disc-stat-item">
+          <span class="disc-stat-num">${totals.fullChapters}/${totals.chapters.length}</span>
+          <span class="disc-stat-label">Full Chapters</span>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="admin-table stats-table disc-chapter-table">
+          <thead><tr><th>Chapter</th><th>Items</th><th>Lore</th><th>Encounters</th></tr></thead>
+          <tbody>${chapterRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
 
 // ── HTML renderer ─────────────────────────────────────────────────────────────
 
@@ -191,6 +256,7 @@ function renderStatsPage(d) {
     wakeGoalMin, recentRows, badgeGrid,
     missStats,
     questState, questCampaign, allCampaigns,
+    discoveryTotals,
   } = d;
 
   // Y axis: invert so earlier (smaller minutes) is higher
@@ -267,7 +333,7 @@ function renderStatsPage(d) {
         <!-- Campaign status -->
         <div class="quest-stat-campaign">
           <div class="quest-stat-campaign-title">${escapeHtml(questCampaign.title)} — Campaign ${questCampaign.campaign_number}</div>
-          <div class="quest-stat-day">Quest Day ${qd} of ${totalDays}</div>
+          <div class="quest-stat-day">Quest Day ${qd} of ${qd >= totalDays ? totalDays : '?'}</div>
           <div class="quest-road-visual stats-road">${roadDots}</div>
           <div class="quest-stat-lifetime">Lifetime quest days (all campaigns): <strong>${questState.lifetime_quest_days}</strong></div>
         </div>
@@ -275,6 +341,8 @@ function renderStatsPage(d) {
         <!-- Chapter map -->
         <h3 class="quest-sub-title">Chapter Map</h3>
         <div class="cmap-grid">${chapterMap}</div>
+
+        ${buildDiscoveryStatsHtml(discoveryTotals, qd)}
 
         <!-- Story log -->
         <h3 class="quest-sub-title">The Story Log</h3>

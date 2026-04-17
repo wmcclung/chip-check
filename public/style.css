@@ -1598,6 +1598,142 @@ code {
   padding: 0.4rem 0.75rem;
 }
 
+/* ── Discovery counter ──────────────────────────────────────────────────────── */
+.disc-counter-row {
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(200,169,110,0.15);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: baseline;
+}
+.disc-counter-label {
+  font-family: var(--font-sans);
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #5a4a2a;
+}
+.disc-counter-values {
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  color: #8a7a5a;
+  letter-spacing: 0.04em;
+}
+.disc-counter-full { color: #a89060; font-style: italic; }
+
+/* ── Road reveal ─────────────────────────────────────────────────────────────── */
+.road-reveal {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid rgba(200,169,110,0.2);
+  border-radius: 6px;
+  background: rgba(200,169,110,0.03);
+}
+.reveal-title {
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--amber);
+  text-align: center;
+  margin-bottom: 1rem;
+}
+.reveal-section { margin-bottom: 1.2rem; }
+.reveal-section-header {
+  font-family: var(--font-sans);
+  font-size: 0.6rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8a7a5a;
+  margin-bottom: 0.6rem;
+  border-bottom: 1px solid rgba(200,169,110,0.1);
+  padding-bottom: 0.3rem;
+}
+.reveal-chapter { margin-bottom: 0.9rem; }
+.reveal-chapter-title {
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #6a5a3a;
+  margin-bottom: 0.4rem;
+}
+.reveal-list { list-style: none; margin: 0; padding: 0; }
+.reveal-item {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid rgba(200,169,110,0.07);
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+.reveal-type {
+  font-family: var(--font-sans);
+  font-size: 0.55rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  padding: 0.1rem 0.3rem;
+  border-radius: 2px;
+  margin-top: 0.1rem;
+}
+.reveal-items    { background: rgba(200,169,110,0.15); color: #c8a96e; }
+.reveal-lore     { background: rgba(100,120,200,0.15); color: #8a9abf; }
+.reveal-encounters { background: rgba(100,180,100,0.12); color: #7aab7a; }
+.reveal-desc {
+  font-family: var(--font-serif);
+  font-size: 0.8rem;
+  color: rgba(240,232,216,0.8);
+  line-height: 1.55;
+}
+.reveal-missed-item .reveal-desc { color: rgba(180,160,130,0.65); font-style: italic; }
+.reveal-empty { font-family: var(--font-serif); font-size: 0.8rem; color: #5a5a6e; font-style: italic; }
+
+/* ── Discovery stats (stats page) ──────────────────────────────────────────── */
+.disc-stats-block { margin-top: 0.5rem; }
+.disc-stats-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.disc-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(200,169,110,0.12);
+  border-radius: 6px;
+  padding: 0.5rem 0.85rem;
+  min-width: 80px;
+}
+.disc-stat-num {
+  font-family: var(--font-sans);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--amber);
+}
+.disc-stat-num.disc-items    { color: #c8a96e; }
+.disc-stat-num.disc-lore     { color: #8a9abf; }
+.disc-stat-num.disc-encounters { color: #7aab7a; }
+.disc-stat-label {
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6a5a3a;
+  margin-top: 0.2rem;
+}
+.disc-chapter-table td:first-child { color: var(--amber-dim); font-weight: 700; }
+.disc-ch-complete td:first-child { color: #7aab7a; }
+
 /* ── Quest: decision UI ─────────────────────────────────────────────────────── */
 .quest-decision {
   margin-top: 1rem;

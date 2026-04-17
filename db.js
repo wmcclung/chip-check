@@ -121,6 +121,11 @@ async function init() {
   await addColumnIfMissing('quest_state', 'artifacts_found',  "JSONB DEFAULT '[]'");
   await addColumnIfMissing('quest_state', 'decision_log',     "JSONB DEFAULT '{}'");
 
+  // Discovery tracking columns
+  await addColumnIfMissing('quest_state', 'adventure_flags', "JSONB DEFAULT '{}'");
+  await addColumnIfMissing('quest_state', 'discovery_log',   "JSONB DEFAULT '{}'");
+  await addColumnIfMissing('checkins',    'chapter_summary', 'JSONB DEFAULT NULL');
+
   // Safe column migrations for databases that may predate the notification columns
   await addColumnIfMissing('friends', 'notify_success',   'INTEGER DEFAULT 1');
   await addColumnIfMissing('friends', 'notify_missed',    'INTEGER DEFAULT 1');
@@ -490,7 +495,7 @@ async function updateQuestState(fields) {
   const id   = qs.rows[0].id;
   const keys = Object.keys(fields);
   const setClause = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
-  const JSONB_FIELDS = new Set(['story_log', 'last_variant_ids', 'artifacts_found', 'decision_log']);
+  const JSONB_FIELDS = new Set(['story_log', 'last_variant_ids', 'artifacts_found', 'decision_log', 'adventure_flags', 'discovery_log']);
   const values    = keys.map(k => {
     if (JSONB_FIELDS.has(k)) return JSON.stringify(fields[k]);
     return fields[k];
@@ -591,6 +596,42 @@ async function saveDecision(chapterKey, choiceId) {
   );
 }
 
+// ── Discovery & adventure flag helpers ───────────────────────────────────────
+
+async function getAdventureFlags() {
+  const qs = await pool.query('SELECT adventure_flags FROM quest_state ORDER BY id DESC LIMIT 1');
+  if (!qs.rows[0]) return {};
+  const flags = qs.rows[0].adventure_flags;
+  if (typeof flags === 'string') { try { return JSON.parse(flags); } catch (_) { return {}; } }
+  return flags || {};
+}
+
+async function getDiscoveryLog() {
+  const qs = await pool.query('SELECT discovery_log FROM quest_state ORDER BY id DESC LIMIT 1');
+  if (!qs.rows[0]) return {};
+  const log = qs.rows[0].discovery_log;
+  if (typeof log === 'string') { try { return JSON.parse(log); } catch (_) { return {}; } }
+  return log || {};
+}
+
+// Reset campaign: clear quest progression + discovery, preserve decision_log and rivian index.
+async function resetCampaign() {
+  await pool.query(
+    `UPDATE quest_state SET
+       quest_day          = 0,
+       quest_day_fraction = 0,
+       consecutive_misses = 0,
+       pending_regroup    = 0,
+       last_variant_ids   = '[]',
+       artifacts_found    = '[]',
+       adventure_flags    = '{}',
+       discovery_log      = '{}',
+       last_updated       = $1
+     WHERE id = (SELECT id FROM quest_state ORDER BY id DESC LIMIT 1)`,
+    [new Date().toISOString()]
+  );
+}
+
 // ── Rivian entry index helpers ────────────────────────────────────────────────
 
 async function getRivianEntryIndex() {
@@ -640,4 +681,7 @@ module.exports = {
   saveDecision,
   getRivianEntryIndex,
   setRivianEntryIndex,
+  getAdventureFlags,
+  getDiscoveryLog,
+  resetCampaign,
 };

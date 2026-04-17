@@ -35,13 +35,6 @@ const getEmberLevel = (minutes) => {
 
 // ── Variant rotation ──────────────────────────────────────────────────────────
 
-const pickVariant = (chapter, tier, recentIds) => {
-  const pool = chapter.variants.filter(v =>
-    v.tiers.includes(tier) && !recentIds.slice(-3).includes(v.id)
-  );
-  if (pool.length === 0) return chapter.variants.find(v => v.tiers.includes(tier));
-  return pool[Math.floor(Math.random() * pool.length)];
-};
 
 // ── Template substitution ─────────────────────────────────────────────────────
 
@@ -142,74 +135,6 @@ const CAMPAIGN_1 = {
       location: 'Downers Grove',
       days:     [1, 5],
 
-      milestone: `Five mornings answered in Downers Grove. The Dreaming Pull has been in this house long enough to know the furniture. It has lost the argument five times now in a house it knows well, which is not something it is used to, and it is taking notes.
-
-What Chip has built here is real. That is the whole problem. The Pull does not have to invent anything — it just has to point at what already exists. The good job. Kath. Stevie. The life that is genuinely good and in which nothing requires the morning to be answered at any particular hour. In a bad life, getting up is easy. The bad life demands it. A good life is where the Dreaming Pull does its best work. It has been doing its best work here.
-
-But the alarm has been answered five times. In a house the Pull knows well, in a life the Pull has been using against Chip for years, the answer came anyway. Five times. That is not an accident. That is not momentum yet either — momentum is what days six through thirty are going to reveal — but it is five mornings the Pull did not win, and the Pull is a meticulous accountant of its own losses.
-
-The Emberstone is in the pack. Stevie is at the door, which she has been at every morning before the alarm finished its thought, which is the one variable the Pull has never found a counter to. A dog with a fully formed opinion about the morning is not something the Dreaming Pull can argue with. It does not speak that language.
-
-Chip told the group he was ready. He said it the way he says most things — with the complete confidence of a man who believes he is always right and does not check this belief very often against the evidence. Brent said let's go, Papi. The Fellowship noted the confidence and said nothing further, because they have known Chip long enough to know that the armor is part of him, and the campaign needs him in it.
-
-Five mornings. The road is outside.
-Stevie has already found it.`,
-
-      milestone_attribution: null,
-
-      variants: [
-        {
-          id:           'c1_v1',
-          tiers:        ['good', 'improving'],
-          pull_appears: false,
-          text:         `The Emberstone lit clean this morning. Not blazing — it hasn't blazed yet, the blazing comes from somewhere further up the road — but steady, the specific steadiness of something that has caught and decided to stay caught. The road ahead held a few steps of light. That is all it ever asks for. A few steps. Then a few more.`,
-        },
-        {
-          id:           'c1_v2',
-          tiers:        ['standard'],
-          pull_appears: false,
-          text:         `{{checkin_time}}. The Emberstone held its light. Not every morning needs to be a statement. Some of them just need to happen. This one happened.`,
-        },
-        {
-          id:           'c1_v3',
-          tiers:        ['struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull made its case this morning with the quiet confidence of something that has made this case before and knows what works. No theatrics. Just the warmth and the familiar dark and the entirely accurate observation that nothing bad would happen if the answer didn't come for another hour.
-
-It was right about that. Nothing bad would have happened.
-
-The Emberstone caught on the last available light anyway, and the answer came, and outside something was already moving in the early morning that had been moving since before the alarm, and Chip was late to it but not absent from it.
-
-Close. The answer came.`,
-        },
-        {
-          id:           'c1_v4',
-          tiers:        ['improving'],
-          pull_appears: false,
-          text:         `Earlier than yesterday. The Emberstone caught the difference before anything else did. A small thing. The small things are how the ledger gets built, one entry at a time, until the ledger is the road and the road is something that was walked.`,
-        },
-        {
-          id:           'c1_v5',
-          tiers:        ['good', 'standard', 'struggle'],
-          pull_appears: false,
-          text:         `Stevie was at the door before the alarm had finished its first note. The Dreaming Pull's argument dissolved mid-sentence. It has no framework for a creature that simply does not register its logic — that greets every morning with the same uncomplicated certainty, that has never once lain in the dark and wondered if today was a good day to start. The dog is the Pull's only consistent vulnerability and the Pull has never figured out what to do about it.`,
-        },
-        {
-          id:           'c1_v6',
-          tiers:        ['standard', 'struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull in this house is not theatrical. It has never needed to be. It carries the specific silence of a morning where nothing is yet required, and in a life this comfortable, that silence is usually enough. It wasn't enough this morning. The Emberstone lit. The ledger has a new entry.`,
-        },
-      ],
-
-      missed: `The Dreaming Pull won a morning in Downers Grove. It knows this house. It has furniture in this house. Today the furniture was sufficient.
-
-Will sent a text that said: "Stevie is embarrassed for you." Brent replied: "Papi. Come on." Stevie went back to the door and waited and eventually gave up and went to her bed, which is the most disappointing thing that happens on a missed morning and the one nobody talks about.
-
-The road will be there tomorrow.`,
-
-      artifact_seed: null,
-
       scheduled: [
         {
           id:           'c1_s1',
@@ -224,6 +149,13 @@ This is, as far as anyone can determine, the Pull's only real vulnerability on t
 The Emberstone lit. The morning was answered.`,
         },
       ],
+
+
+      missed: `The Dreaming Pull won a morning in Downers Grove. It knows this house. It has furniture in this house. Today the furniture was sufficient.
+
+Will sent a text that said: "Stevie is embarrassed for you." Brent replied: "Papi. Come on." Stevie went back to the door and waited and eventually gave up and went to her bed, which is the most disappointing thing that happens on a missed morning and the one nobody talks about.
+
+The road will be there tomorrow.`,
 
       decision: {
         prompt:  `The alarm sounds in the grey before dawn. The house is still. The Dreaming Pull settles into the quiet and waits.`,
@@ -240,6 +172,22 @@ The Emberstone lit. The morning was answered.`,
           },
         ],
       },
+      milestone: `Five mornings answered in Downers Grove. The Dreaming Pull has been in this house long enough to know the furniture. It has lost the argument five times now in a house it knows well, which is not something it is used to, and it is taking notes.
+
+What Chip has built here is real. That is the whole problem. The Pull does not have to invent anything — it just has to point at what already exists. The good job. Kath. Stevie. The life that is genuinely good and in which nothing requires the morning to be answered at any particular hour. In a bad life, getting up is easy. The bad life demands it. A good life is where the Dreaming Pull does its best work. It has been doing its best work here.
+
+But the alarm has been answered five times. In a house the Pull knows well, in a life the Pull has been using against Chip for years, the answer came anyway. Five times. That is not an accident. That is not momentum yet either — momentum is what days six through thirty are going to reveal — but it is five mornings the Pull did not win, and the Pull is a meticulous accountant of its own losses.
+
+The Emberstone is in the pack. Stevie is at the door, which she has been at every morning before the alarm finished its thought, which is the one variable the Pull has never found a counter to. A dog with a fully formed opinion about the morning is not something the Dreaming Pull can argue with. It does not speak that language.
+
+Chip told the group he was ready. He said it the way he says most things — with the complete confidence of a man who believes he is always right and does not check this belief very often against the evidence. Brent said let's go, Papi. The Fellowship noted the confidence and said nothing further, because they have known Chip long enough to know that the armor is part of him, and the campaign needs him in it.
+
+Five mornings. The road is outside.
+Stevie has already found it.`,
+
+      milestone_attribution: null,
+
+
     },
 
     // ── Chapter 2 ─────────────────────────────────────────────────────────────
@@ -248,63 +196,6 @@ The Emberstone lit. The morning was answered.`,
       title:    'The Amber Road',
       location: 'The road south',
       days:     [6, 10],
-
-      milestone: `Ten mornings. The road has a name now.
-
-There's a mile marker on the Amber Road — old stone, inscription worn past reading — where travelers have cut marks since before the current cartographers were born. Initials. Dates. A few symbols nobody has translated. They stop at different points down the road, the marks. Some here. Some further. The road doesn't say which ones made them on the way out and which came back.
-
-The Emberstone burns steadier here than it did in the first five days. Not brighter. Steadier. There is a difference. A flame that might go out feels different from one that has decided not to. The difference is not visible. It is felt.
-
-Will's ledger entry for day ten arrived with a single line appended below the timestamp: "Double digits. This was not a given." Brent sent a separate message thirty seconds later: "What Will means is: we're genuinely impressed. He doesn't say that. I do." Kevin, from a time that told its own story, sent: "Ten. Nice." And then, three minutes later: "I mean it."
-
-For Will, nothing further was the comment. For Brent, translating Will is an act of service he has fully committed to. For Kevin, three minutes of sitting with a thing before sending it is how Kevin is certain.`,
-
-      milestone_attribution: null,
-
-      variants: [
-        {
-          id:           'c2_v1',
-          tiers:        ['good', 'improving'],
-          pull_appears: false,
-          text:         `The Amber Road is easier to find when the morning is answered early enough that the day hasn't claimed it yet. The Emberstone lit a good stretch of it. Not the whole road — never the whole road — but further than yesterday.`,
-        },
-        {
-          id:           'c2_v2',
-          tiers:        ['standard'],
-          pull_appears: false,
-          text:         `A {{day_of_week}} on the Amber Road. The Emberstone held. The ledger has a new entry. Some days the road is just the road and that's enough.`,
-        },
-        {
-          id:           'c2_v3',
-          tiers:        ['struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull tried something subtle this morning — not the warmth, not the quiet, but the specific reasonableness of the road still being there in an hour. It's a good argument. It works often. Today it didn't work, but it was close enough that close is worth noting.`,
-        },
-        {
-          id:           'c2_v4',
-          tiers:        ['improving'],
-          pull_appears: false,
-          text:         `Earlier than yesterday on the Amber Road. The Emberstone caught more of it this morning — a little further ahead, a detail that wasn't visible before. Not much. Enough.`,
-        },
-        {
-          id:           'c2_v5',
-          tiers:        ['good', 'standard', 'struggle'],
-          pull_appears: false,
-          text:         `Someone came through this stretch before. The trail shows it — not worn exactly, but familiar in the way paths get familiar when enough people have needed them. There's a notch cut into the waypost marker at the road's first bend. Not a name. Just a mark that says: I was here and I continued. Whoever made it is gone. The mark stayed.`,
-        },
-        {
-          id:           'c2_v6',
-          tiers:        ['standard', 'struggle'],
-          pull_appears: true,
-          text:         `The ledger entry for day {{quest_day}} arrived with a timestamp annotation: "{{checkin_time}}. The Pull had a productive morning. Documented." Will doesn't editorialize. He records. The record is the editorial.`,
-        },
-      ],
-
-      missed: `One morning lost on the Amber Road. The Dreaming Pull knows this stretch well — it has been working it since before the quest had a name.
-
-The road will still be there.`,
-
-      artifact_seed: null,
 
       scheduled: [
         {
@@ -333,6 +224,11 @@ Will has not commented on Kevin's interpretation. The ledger has a new entry for
         },
       ],
 
+
+      missed: `One morning lost on the Amber Road. The Dreaming Pull knows this stretch well — it has been working it since before the quest had a name.
+
+The road will still be there.`,
+
       decision: {
         prompt:  `The waypost marker at the Amber Road's first bend. The notch is there. Nobody explained it.`,
         choices: [
@@ -348,6 +244,19 @@ Will has not commented on Kevin's interpretation. The ledger has a new entry for
           },
         ],
       },
+      milestone: `Ten mornings. The road has a name now.
+
+There's a mile marker on the Amber Road — old stone, inscription worn past reading — where travelers have cut marks since before the current cartographers were born. Initials. Dates. A few symbols nobody has translated. They stop at different points down the road, the marks. Some here. Some further. The road doesn't say which ones made them on the way out and which came back.
+
+The Emberstone burns steadier here than it did in the first five days. Not brighter. Steadier. There is a difference. A flame that might go out feels different from one that has decided not to. The difference is not visible. It is felt.
+
+Will's ledger entry for day ten arrived with a single line appended below the timestamp: "Double digits. This was not a given." Brent sent a separate message thirty seconds later: "What Will means is: we're genuinely impressed. He doesn't say that. I do." Kevin, from a time that told its own story, sent: "Ten. Nice." And then, three minutes later: "I mean it."
+
+For Will, nothing further was the comment. For Brent, translating Will is an act of service he has fully committed to. For Kevin, three minutes of sitting with a thing before sending it is how Kevin is certain.`,
+
+      milestone_attribution: null,
+
+
     },
 
     // ── Chapter 3 ─────────────────────────────────────────────────────────────
@@ -356,73 +265,6 @@ Will has not commented on Kevin's interpretation. The ledger has a new entry for
       title:    'The Fogmere',
       location: 'The Fogmere',
       days:     [11, 15],
-
-      milestone: `Fifteen mornings. The Fogmere is behind them, and that sentence contains the whole story.
-
-The Fogmere does not fail campaigns dramatically. This is the thing about it that the cartographers note and travelers tend not to believe until they're in it. There is no single terrible morning, no obvious breaking point, no moment you could point to afterward and say: that was where it ended. Instead there is a slowdown. One miss, the road still there. Another miss, still fine, nothing permanent about it. And then the misses have accumulated enough weight that continuing feels like the strange choice and stopping feels like coming to your senses, and by then it is already over and the fog has simply absorbed the campaign without anyone noticing the exact moment it happened.
-
-That did not happen.
-
-The Emberstone is still lit on the other side of the Fogmere. That is the entirety of what making it through looks like. The stone was still lit.
-
-An environmental consultant who knows what lives in fog — who could tell you, specifically, which insects work the grey hours, what the damp does to soil composition, what the visibility means for the creatures that depend on it — walked through the stretch where most campaigns quietly stop, because the interesting things do not stop just because you cannot see them, and at some level Chip has always known that.
-
-Brent had been sitting on something since morning and sent it at noon: he had been wrong about this stretch and he was keeping a list of the ways he was wrong about this campaign and the list was getting longer. Will replied in the group that Brent's list and his ledger were the same document. Kevin sent a laughing emoji and then said that was genuinely beautiful. Will did not respond to this, which is how Will accepts something he agrees with but will not say out loud.
-
-The air on the other side is different. Not better. Just different in the way air feels when you have moved through something without knowing what it cost until after.`,
-
-      milestone_attribution: null,
-
-      variants: [
-        {
-          id:           'c3_v1',
-          tiers:        ['good', 'improving'],
-          pull_appears: false,
-          text:         `The fog doesn't lift for anyone. But the Emberstone burns through it — further on good mornings, less far on others. This morning it burned far. Not all the way through. Far enough.`,
-        },
-        {
-          id:           'c3_v2',
-          tiers:        ['standard'],
-          pull_appears: false,
-          text:         `Another morning in the Fogmere. The Emberstone held its light. Visibility is low here and always has been — the only reliable landmark is the stone itself, and the stone is reliable.`,
-        },
-        {
-          id:           'c3_v3',
-          tiers:        ['struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull sat quietly this morning. Didn't argue, didn't push — just made itself comfortable in the grey and waited. The quiet is sometimes harder than the argument. The Emberstone caught eventually. The road continued.`,
-        },
-        {
-          id:           'c3_v4',
-          tiers:        ['improving'],
-          pull_appears: false,
-          text:         `The Emberstone burned a little further into the fog today than yesterday. Not enough to see the other side. Enough to know the other side is there.`,
-        },
-        {
-          id:           'c3_v5',
-          tiers:        ['good', 'standard', 'struggle'],
-          pull_appears: false,
-          text:         `Stevie appeared at the bedroom door at a time that made the Dreaming Pull's argument significantly harder to sustain. The Pull has opinions about the dog. None of them are useful to the Pull.`,
-        },
-        {
-          id:           'c3_v6',
-          tiers:        ['standard', 'struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull is as old as the dreaming place itself. It grew from the accumulated weight of every morning that asked too much, every dawn that felt like more than was fair — not a creature that was made but a force that accumulated, over a very long time, from very ordinary reluctance.
-
-It has a different definition of good than the road does.
-
-It was here this morning. The Emberstone lit anyway.`,
-        },
-      ],
-
-      missed: `The Fogmere claimed a morning. The Dreaming Pull was comfortable in the grey and it used that comfort methodically, the way it uses everything — without embellishment, without drama, just the accurate presentation of what already exists.
-
-Will sent: "Absolute clown show. Get up tomorrow." Brent said: "Papi the fog is temporary and the road isn't." Kevin said: "I've been up since five. I have no patience for this. Get up tomorrow."
-
-The road is still there on the other side of the grey. It was there the whole time.`,
-
-      artifact_seed: null,
 
       scheduled: [
         {
@@ -439,6 +281,13 @@ The road bends ahead, just past where the stone's light reaches. It knows someth
         },
       ],
 
+
+      missed: `The Fogmere claimed a morning. The Dreaming Pull was comfortable in the grey and it used that comfort methodically, the way it uses everything — without embellishment, without drama, just the accurate presentation of what already exists.
+
+Will sent: "Absolute clown show. Get up tomorrow." Brent said: "Papi the fog is temporary and the road isn't." Kevin said: "I've been up since five. I have no patience for this. Get up tomorrow."
+
+The road is still there on the other side of the grey. It was there the whole time.`,
+
       decision: {
         prompt:  `The fog is heaviest at the chapter's midpoint. The Emberstone lights the next few steps. No further.`,
         choices: [
@@ -454,6 +303,23 @@ The road bends ahead, just past where the stone's light reaches. It knows someth
           },
         ],
       },
+      milestone: `Fifteen mornings. The Fogmere is behind them, and that sentence contains the whole story.
+
+The Fogmere does not fail campaigns dramatically. This is the thing about it that the cartographers note and travelers tend not to believe until they're in it. There is no single terrible morning, no obvious breaking point, no moment you could point to afterward and say: that was where it ended. Instead there is a slowdown. One miss, the road still there. Another miss, still fine, nothing permanent about it. And then the misses have accumulated enough weight that continuing feels like the strange choice and stopping feels like coming to your senses, and by then it is already over and the fog has simply absorbed the campaign without anyone noticing the exact moment it happened.
+
+That did not happen.
+
+The Emberstone is still lit on the other side of the Fogmere. That is the entirety of what making it through looks like. The stone was still lit.
+
+An environmental consultant who knows what lives in fog — who could tell you, specifically, which insects work the grey hours, what the damp does to soil composition, what the visibility means for the creatures that depend on it — walked through the stretch where most campaigns quietly stop, because the interesting things do not stop just because you cannot see them, and at some level Chip has always known that.
+
+Brent had been sitting on something since morning and sent it at noon: he had been wrong about this stretch and he was keeping a list of the ways he was wrong about this campaign and the list was getting longer. Will replied in the group that Brent's list and his ledger were the same document. Kevin sent a laughing emoji and then said that was genuinely beautiful. Will did not respond to this, which is how Will accepts something he agrees with but will not say out loud.
+
+The air on the other side is different. Not better. Just different in the way air feels when you have moved through something without knowing what it cost until after.`,
+
+      milestone_attribution: null,
+
+
     },
 
     // ── Chapter 4 ─────────────────────────────────────────────────────────────
@@ -462,68 +328,6 @@ The road bends ahead, just past where the stone's light reaches. It knows someth
       title:    'Thornwick',
       location: 'Thornwick',
       days:     [16, 20],
-
-      milestone: `Twenty mornings. Thornwick has been watching.
-
-The cartographers keep entries going back further than this quest — different travelers, different campaigns, the same road. The entries that extend furthest do not belong to the travelers who seemed most certain at the start. They belong to the ones who kept showing up after certainty would have been reasonable to abandon, after the road stopped feeling like an adventure and started feeling like a commitment, after the Wednesday in week three arrived with its ordinary face and its specific offer.
-
-One entry in the Thornwick ledger stops at day forty-seven. No explanation. The cartographer's margin note says only: further than expected.
-
-The Emberstone burns with a steadiness in Thornwick that it did not carry through the Fogmere. Not brighter. More settled. Something that has decided what it is burns differently from something still figuring it out. That difference is visible in the stone if you know what to look for. The cartographers noticed on the first morning. They noted it without comment, the way they note everything — because the details are the map, and the map is the point.
-
-A cartographer pressed a compass into the pack at the twenty-day mark. No explanation. It does not point north. It points at something. The cartographer offered no clarification and seemed to expect none would be needed.
-
-Chip told the group about the compass. He thought it was broken. Will replied that the cartographers of Thornwick do not give broken compasses to travelers and suggested Chip read the room. Brent translated: "Papi it's not broken, it's significant, hold onto it." Chip said so he should hold onto it. Kevin replied: yes, Chip. Hold onto it.`,
-
-      milestone_attribution: null,
-      artifact_awarded: 'compass',
-
-      variants: [
-        {
-          id:           'c4_v1',
-          tiers:        ['good', 'improving'],
-          pull_appears: false,
-          text:         `The cartographers record the time without commentary — they note everything because the details are the map, and the map is the point. This morning's entry is a good one. The Emberstone lit a stretch of road that wasn't visible from here yesterday.`,
-        },
-        {
-          id:           'c4_v2',
-          tiers:        ['standard'],
-          pull_appears: false,
-          text:         `Another entry in the Thornwick records. The road is built from exactly this — one honest morning after another. The Emberstone held. The cartographers noted the time.`,
-        },
-        {
-          id:           'c4_v3',
-          tiers:        ['struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull tried the maps this morning — used the evidence of everyone who stopped before Chip as an argument for stopping. Look, it said, in the way it says things. Look where the entries end. The Emberstone caught anyway. Not every entry ends here.`,
-        },
-        {
-          id:           'c4_v4',
-          tiers:        ['improving'],
-          pull_appears: false,
-          text:         `The Emberstone lit more of the road ahead this morning. The cartographers added a small mark further out — a detail now visible that wasn't visible before.`,
-        },
-        {
-          id:           'c4_v5',
-          tiers:        ['good', 'standard', 'struggle'],
-          pull_appears: false,
-          text:         `A name carved into the waypost at Thornwick's eastern edge: Elara. No family name, no date. Below it a small symbol the cartographers say means: passed through, continued. Her route extends further than most. Nobody knows how far she got. She passed through. She continued. The mark stayed.`,
-        },
-        {
-          id:           'c4_v6',
-          tiers:        ['standard', 'struggle'],
-          pull_appears: false,
-          text:         `Brent sent something during the Thornwick stretch prefaced with: "I'm going to say something Will won't say because Will doesn't say things like this." What followed was specific and took four sentences. The short version: twenty days changes the math. The long version was the message. He ended it: "Papi. Keep going."`,
-        },
-      ],
-
-      missed: `A blank in the Thornwick records today. The cartographers leave space for these. They have seen enough campaigns to know that a blank is not an ending unless the traveler decides it is.
-
-Will sent a text describing Chip's choices with the clinical precision of someone who has been watching this pattern for years. Brent said: "Papi, tomorrow is still on the map." Kevin said: "Don't let one blank become the chapter. Get up."
-
-The road will be there. The compass still points.`,
-
-      artifact_seed: null,
 
       scheduled: [
         {
@@ -548,6 +352,13 @@ The cartographers noted the time without comment and added a mark to their curre
         },
       ],
 
+
+      missed: `A blank in the Thornwick records today. The cartographers leave space for these. They have seen enough campaigns to know that a blank is not an ending unless the traveler decides it is.
+
+Will sent a text describing Chip's choices with the clinical precision of someone who has been watching this pattern for years. Brent said: "Papi, tomorrow is still on the map." Kevin said: "Don't let one blank become the chapter. Get up."
+
+The road will be there. The compass still points.`,
+
       decision: {
         prompt:  `The cartographers offer to show you where previous travelers stopped on the road ahead.`,
         choices: [
@@ -563,6 +374,22 @@ The cartographers noted the time without comment and added a mark to their curre
           },
         ],
       },
+      artifact_awarded: 'compass',
+
+
+      milestone: `Twenty mornings. Thornwick has been watching.
+
+The cartographers keep entries going back further than this quest — different travelers, different campaigns, the same road. The entries that extend furthest do not belong to the travelers who seemed most certain at the start. They belong to the ones who kept showing up after certainty would have been reasonable to abandon, after the road stopped feeling like an adventure and started feeling like a commitment, after the Wednesday in week three arrived with its ordinary face and its specific offer.
+
+One entry in the Thornwick ledger stops at day forty-seven. No explanation. The cartographer's margin note says only: further than expected.
+
+The Emberstone burns with a steadiness in Thornwick that it did not carry through the Fogmere. Not brighter. More settled. Something that has decided what it is burns differently from something still figuring it out. That difference is visible in the stone if you know what to look for. The cartographers noticed on the first morning. They noted it without comment, the way they note everything — because the details are the map, and the map is the point.
+
+A cartographer pressed a compass into the pack at the twenty-day mark. No explanation. It does not point north. It points at something. The cartographer offered no clarification and seemed to expect none would be needed.
+
+Chip told the group about the compass. He thought it was broken. Will replied that the cartographers of Thornwick do not give broken compasses to travelers and suggested Chip read the room. Brent translated: "Papi it's not broken, it's significant, hold onto it." Chip said so he should hold onto it. Kevin replied: yes, Chip. Hold onto it.`,
+
+      milestone_attribution: null,
     },
 
     // ── Chapter 5 ─────────────────────────────────────────────────────────────
@@ -571,65 +398,6 @@ The cartographers noted the time without comment and added a mark to their curre
       title:    'The Greywood',
       location: 'The Greywood forest',
       days:     [21, 25],
-
-      milestone: `Twenty-five mornings. A quarter of the road behind, though the road does not announce how much is left.
-
-The Greywood has a patience that is not passive — it has been here long enough that it has stopped needing to be. The old trees have watched enough travelers come through, certain ones and uncertain ones, and they have reached no conclusions about which kind arrives further. They record. They don't distinguish.
-
-The Emberstone burns differently in the Greywood. Not brighter. More focused. Like the forest is giving it something to push against, and the push is making the stone more certain of its own light.
-
-Kevin sent something during the Greywood stretch. The timestamp said something about his morning before the message did. It said: "Twenty-five. The part where it stops being a thing you're doing and starts being a thing you are takes longer than people think. You're in that part now." No elaboration. Kevin doesn't elaborate. The message was complete when he sent it.
-
-Chip said: did Kevin just go deep? Brent replied: Kevin goes deep approximately once every nine days. You learn to wait for it. Kevin replied: I was just awake and had a thought. Don't make it a thing. Will replied: Day 25. Documented. Kevin replied: Thank you Will. Will replied: That's what the ledger is for.`,
-
-      milestone_attribution: null,
-
-      variants: [
-        {
-          id:           'c5_v1',
-          tiers:        ['good', 'improving'],
-          pull_appears: false,
-          text:         `The Greywood was quiet and dark when the morning came. The Emberstone lit the path. The old trees recorded it in whatever way old trees record things — the slow ledger of the forest, written in rings, in the dark.`,
-        },
-        {
-          id:           'c5_v2',
-          tiers:        ['standard'],
-          pull_appears: false,
-          text:         `The trees have seen every kind of morning. They make no distinction between the ones that came easily and the ones that cost something. The Emberstone held. The road continued.`,
-        },
-        {
-          id:           'c5_v3',
-          tiers:        ['struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull found genuine quiet in the Greywood — the kind that makes the dreaming place sound reasonable by comparison. It used the quiet well this morning. The answer still came. The quiet stayed on the road behind for a while.`,
-        },
-        {
-          id:           'c5_v4',
-          tiers:        ['improving'],
-          pull_appears: false,
-          text:         `The Emberstone burned further into the forest today than yesterday. Something ahead caught the light — not clear yet, but present. A suggestion of what the road looks like past the trees.`,
-        },
-        {
-          id:           'c5_v5',
-          tiers:        ['good', 'standard', 'struggle'],
-          pull_appears: false,
-          text:         `Stevie was at the door before the Dreaming Pull had finished its opening argument. The Pull had good material in the Greywood quiet. The dog was not interested in any of it.`,
-        },
-        {
-          id:           'c5_v6',
-          tiers:        ['standard', 'struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull has no concept of a deadline. It will make the same case tomorrow that it made today, with the same conviction, having kept no record that today's case didn't work.`,
-        },
-      ],
-
-      missed: `The Greywood held a morning in its roots. The silence here is too comfortable, the case too familiar.
-
-Will sent something clipped and accurate. Brent said: "Papi the trees don't care either way. The road does." Kevin said: "The Greywood is where it gets quiet enough to hear the wrong voice. You heard it. Hear the other one tomorrow."
-
-The road will still be there.`,
-
-      artifact_seed: null,
 
       scheduled: [
         {
@@ -658,6 +426,13 @@ The Emberstone lit. That is what matters today.`,
         },
       ],
 
+
+      missed: `The Greywood held a morning in its roots. The silence here is too comfortable, the case too familiar.
+
+Will sent something clipped and accurate. Brent said: "Papi the trees don't care either way. The road does." Kevin said: "The Greywood is where it gets quiet enough to hear the wrong voice. You heard it. Hear the other one tomorrow."
+
+The road will still be there.`,
+
       decision: {
         prompt:  `The Greywood is deep and old. The trees have been here long enough to have watched other travelers come through this same path.`,
         choices: [
@@ -673,6 +448,19 @@ The Emberstone lit. That is what matters today.`,
           },
         ],
       },
+      milestone: `Twenty-five mornings. A quarter of the road behind, though the road does not announce how much is left.
+
+The Greywood has a patience that is not passive — it has been here long enough that it has stopped needing to be. The old trees have watched enough travelers come through, certain ones and uncertain ones, and they have reached no conclusions about which kind arrives further. They record. They don't distinguish.
+
+The Emberstone burns differently in the Greywood. Not brighter. More focused. Like the forest is giving it something to push against, and the push is making the stone more certain of its own light.
+
+Kevin sent something during the Greywood stretch. The timestamp said something about his morning before the message did. It said: "Twenty-five. The part where it stops being a thing you're doing and starts being a thing you are takes longer than people think. You're in that part now." No elaboration. Kevin doesn't elaborate. The message was complete when he sent it.
+
+Chip said: did Kevin just go deep? Brent replied: Kevin goes deep approximately once every nine days. You learn to wait for it. Kevin replied: I was just awake and had a thought. Don't make it a thing. Will replied: Day 25. Documented. Kevin replied: Thank you Will. Will replied: That's what the ledger is for.`,
+
+      milestone_attribution: null,
+
+
     },
 
     // ── Chapter 6 ─────────────────────────────────────────────────────────────
@@ -681,70 +469,6 @@ The Emberstone lit. That is what matters today.`,
       title:    'The Hollow Pass',
       location: 'The Hollow Pass',
       days:     [26, 30],
-
-      milestone: `Thirty mornings.
-
-The Hollow Pass offers no scenery and no revelation. It offers passage, and passage is what it gave. Thirty is a number that means something — not because of what the number is, but because of what thirty consecutive mornings cost and what they built in the building.
-
-The Emberstone burns at its clearest in the Pass. Not its brightest. Its clearest. The Pass strips things to what they actually are. What they actually are, thirty mornings in, is a traveler who has continued past the point where stopping would have been reasonable.
-
-The compass from Thornwick stopped moving in the Pass. It had been pointing with conviction since day twenty, but here the needle settled into certainty. Whatever it is pointing at, the Pass is where the direction became fixed.
-
-Will's ledger entry for day thirty: "Thirty. I had twenty-two in the pool." He did not explain who else had entries, or what they guessed. He noted that thirty was not the consensus. Nothing else. Brent replied to Will in the group: "For anyone curious, Will's 'nothing else' here is doing a lot of work. He's extremely pleased." Kevin sent: "I had thirty-one, for the record." Will replied: "You had the highest number." Kevin replied: "I believed in the guy." A pause. "Still do."
-
-Some things get documented because they should be.`,
-
-      milestone_attribution: null,
-      artifact_awarded: 'hollow_stone',
-
-      variants: [
-        {
-          id:           'c6_v1',
-          tiers:        ['good', 'improving'],
-          pull_appears: false,
-          text:         `The Pass is cold at this hour — cold enough that the Emberstone's warmth is something other than metaphor. Early mornings here feel different than late ones. More honest about what the road is and what it costs.`,
-        },
-        {
-          id:           'c6_v2',
-          tiers:        ['standard'],
-          pull_appears: false,
-          text:         `Through the Hollow Pass. The Emberstone held against the cold. The compass settled to its direction. The road continued.`,
-        },
-        {
-          id:           'c6_v3',
-          tiers:        ['struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull tried the cold this morning — made the warmth of the dreaming place feel like the only reasonable response to the temperature. It is not a wrong argument. Cold is real. The Emberstone was lit when the answer came. The Pull noted this with the specific resignation of something that makes a correct argument and still loses.`,
-        },
-        {
-          id:           'c6_v4',
-          tiers:        ['improving'],
-          pull_appears: false,
-          text:         `The Emberstone's light reached further into the Pass than yesterday. The compass needle, which has not moved since it settled here, seemed more certain. Like something ahead recognized the light.`,
-        },
-        {
-          id:           'c6_v5',
-          tiers:        ['good', 'standard', 'struggle'],
-          pull_appears: false,
-          text:         `There is a practice among travelers through the Pass — picking up a stone from the wall without being sure why. The one that went into the pack is smooth and heavier than it looks and warmer than the temperature should allow. Nobody pointed this out. It is simply there now.`,
-        },
-        {
-          id:           'c6_v6',
-          tiers:        ['standard', 'struggle'],
-          pull_appears: false,
-          text:         `Kevin's message during the Pass arrived with a timestamp that said something about what his morning had already asked of him before any of this started. It said: "The hard part about this stretch is there's nothing to blame. No warmth, no comfort, no good reason to stop except that stopping would be easier. That's the easier kind of hard. Keep going."
-
-Will replied: "Correct." Brent replied: "I want to be clear that this group chat has become genuinely important to me and I won't be taking questions about it, Papi." Kevin replied: "Brent." Brent said he meant it. Will documented the exchange. Kevin told Will not to. Will said it was already documented. Kevin said he needed better friends. Will replied: "Day {{quest_day}}. Kevin said he needed better friends. Documented."`,
-        },
-      ],
-
-      missed: `One morning lost in the cold of the Pass. The Dreaming Pull found its argument in the temperature and made it without a single word it didn't need. Cold is real. The Dreaming Place is warm. The case practically assembles itself in a canyon at dawn.
-
-Will sent a text that did not mince anything. Brent said: "Papi the Pass will still need crossing and the stone is still in the pack." Kevin sent: "The compass doesn't change direction because you had a bad morning. Get up tomorrow."
-
-The Pass will still need crossing. That is not a comfort. That is just the Pass.`,
-
-      artifact_seed: null,
 
       scheduled: [
         {
@@ -775,6 +499,13 @@ The stone is still in the pack. Still warm.`,
         },
       ],
 
+
+      missed: `One morning lost in the cold of the Pass. The Dreaming Pull found its argument in the temperature and made it without a single word it didn't need. Cold is real. The Dreaming Place is warm. The case practically assembles itself in a canyon at dawn.
+
+Will sent a text that did not mince anything. Brent said: "Papi the Pass will still need crossing and the stone is still in the pack." Kevin sent: "The compass doesn't change direction because you had a bad morning. Get up tomorrow."
+
+The Pass will still need crossing. That is not a comfort. That is just the Pass.`,
+
       decision: {
         prompt:  `The compass has just settled on a direction in the Pass. It is not pointing toward the road the map shows.`,
         choices: [
@@ -790,6 +521,22 @@ The stone is still in the pack. Still warm.`,
           },
         ],
       },
+      artifact_awarded: 'hollow_stone',
+
+
+      milestone: `Thirty mornings.
+
+The Hollow Pass offers no scenery and no revelation. It offers passage, and passage is what it gave. Thirty is a number that means something — not because of what the number is, but because of what thirty consecutive mornings cost and what they built in the building.
+
+The Emberstone burns at its clearest in the Pass. Not its brightest. Its clearest. The Pass strips things to what they actually are. What they actually are, thirty mornings in, is a traveler who has continued past the point where stopping would have been reasonable.
+
+The compass from Thornwick stopped moving in the Pass. It had been pointing with conviction since day twenty, but here the needle settled into certainty. Whatever it is pointing at, the Pass is where the direction became fixed.
+
+Will's ledger entry for day thirty: "Thirty. I had twenty-two in the pool." He did not explain who else had entries, or what they guessed. He noted that thirty was not the consensus. Nothing else. Brent replied to Will in the group: "For anyone curious, Will's 'nothing else' here is doing a lot of work. He's extremely pleased." Kevin sent: "I had thirty-one, for the record." Will replied: "You had the highest number." Kevin replied: "I believed in the guy." A pause. "Still do."
+
+Some things get documented because they should be.`,
+
+      milestone_attribution: null,
     },
 
     // ── Chapter 7 ─────────────────────────────────────────────────────────────
@@ -798,82 +545,6 @@ The stone is still in the pack. Still warm.`,
       title:    'The Sanctuary of Halvard',
       location: 'The Sanctuary',
       days:     [31, 35],
-
-      milestone: `Thirty-five mornings, and the Sanctuary.
-
-Halvard does not make speeches. He sits at his fire and he watches the stone and at some point during the days a traveler stays, he says one thing. Once. Without setup, without conclusion, in the register of things that are offered rather than explained. What he said this time will not be recorded here. Some things lose something essential when they are written down — the specific weight of them, the particular quality of silence that follows. What it does is get carried. In the pack, alongside the compass and the hollow stone, it goes into the road ahead and it will be there when the road gets hard enough to need it.
-
-The Emberstone burns quietly at the Sanctuary. Not dimly. Quietly. The way a fire burns when it is not competing with anything.
-
-Chip told the group a rough shape of what Halvard said — not the full thing, a suggestion of it. Will replied, after a pause that felt chosen: that tracks. Brent said: "Papi, I need the full version." Kevin said he was not going to get the full version. Chip confirmed this.
-
-Kevin said he knew. Because he'd been here before.
-
-Different road, he said. Different year. You carry it or you don't, and you can't give the full version to anyone who wasn't there.
-
-The timestamps show a gap after that. Long enough that Brent, who processes things out loud and in real time, had to sit with something in silence, which is not his natural state. He came back with: so Kevin has actually been to the Sanctuary. Kevin replied: different road. That was all he said. The subject didn't close exactly. It just ran out of questions anyone knew how to ask.
-
-Some information changes the room just by arriving. Kevin does this sometimes. Then he acts like he was just clearing his throat.`,
-
-      milestone_attribution: null,
-      artifact_awarded: 'halvard_word',
-
-      variants: [
-        {
-          id:           'c7_v1',
-          tiers:        ['good', 'improving'],
-          pull_appears: false,
-          text:         `Halvard's fire was low when the morning came. The Emberstone was already bright. He noticed. He said nothing. At the Sanctuary, saying nothing is how approval is expressed.`,
-        },
-        {
-          id:           'c7_v2',
-          tiers:        ['standard'],
-          pull_appears: false,
-          text:         `Another morning at the Sanctuary. The Emberstone held. Halvard made no comment on the time, which means the time was acceptable. His standards are not announced. They are demonstrated by what he does and does not say.`,
-        },
-        {
-          id:           'c7_v3',
-          tiers:        ['struggle'],
-          pull_appears: true,
-          text:         `The Sanctuary is the most comfortable place on the road so far, which means the Dreaming Pull had its best material here. Better warmth, better quiet, the reasonable suggestion that rest at a waystation is exactly what a waystation is for. The Emberstone caught eventually. Halvard, who has seen the Pull work this stretch more times than he has counted, said nothing.`,
-        },
-        {
-          id:           'c7_v4',
-          tiers:        ['improving'],
-          pull_appears: false,
-          text:         `The Emberstone drew Halvard's attention this morning — not a comment, just the way his eyes tracked to it. Some brightness is noticeable before it is remarked on.`,
-        },
-        {
-          id:           'c7_v5',
-          tiers:        ['good', 'standard', 'struggle'],
-          pull_appears: true,
-          text:         `Halvard talked about the Dreaming Pull once during the Sanctuary days. Not a lecture — one thing, said without setup or conclusion.
-
-He said the Pull doesn't want to keep anyone. That is a common misunderstanding. It wants to offer the Dreaming Place because the Dreaming Place is genuinely good and it genuinely believes this. The danger is not in the offer. The danger is in the door.
-
-The Pull doesn't lock the door. It stops mentioning it. And the Dreaming Place becomes comfortable enough that the door stops mattering. And then one morning it's stiff from disuse and you think: it was always going to be difficult to leave.
-
-He said the only thing that keeps the door easy is using it every morning whether you want to or not. He still uses it. After all this time.
-
-What he said after that is what's in the pack.`,
-        },
-        {
-          id:           'c7_v6',
-          tiers:        ['standard', 'struggle'],
-          pull_appears: false,
-          text:         `Will's message during the Sanctuary stretch arrived without a ledger citation. For Will, this is the equivalent of showing up to a formal occasion underdressed — it means something is operating at a different level than the usual.
-
-It said: "I want to be clear that I still think a grown man should be able to wake up without a fellowship and a glowing rock. I also want to be clear that you are doing it. That is the only thing that matters to the ledger." A pause. Then: "Pay attention to what Halvard says."
-
-Brent messaged Will separately: you just said something nice. Will replied: I said something accurate. Brent replied: those are the same thing, for you. Will did not respond, which is how Will accepts something he agrees with but finds unnecessary to confirm. Brent sent Chip a screenshot. Chip sent back a single question mark. Brent said: framing this.`,
-        },
-      ],
-
-      missed: `The Sanctuary held a morning. The Dreaming Pull had its best material on the entire road here — warmth, genuine rest, the reasonable case for a waystation doing exactly what a waystation is designed for — and it used all of it.
-
-Will sent a text. Halvard said nothing, which at the Sanctuary means he noticed and is keeping it. The road will be there when the door opens.`,
-
-      artifact_seed: null,
 
       scheduled: [
         {
@@ -906,6 +577,11 @@ What he said after that is what's in the pack.`,
         },
       ],
 
+
+      missed: `The Sanctuary held a morning. The Dreaming Pull had its best material on the entire road here — warmth, genuine rest, the reasonable case for a waystation doing exactly what a waystation is designed for — and it used all of it.
+
+Will sent a text. Halvard said nothing, which at the Sanctuary means he noticed and is keeping it. The road will be there when the door opens.`,
+
       decision: {
         prompt:  `Halvard is at his fire. He has one thing to say, and he will say it once.`,
         choices: [
@@ -921,6 +597,26 @@ What he said after that is what's in the pack.`,
           },
         ],
       },
+      artifact_awarded: 'halvard_word',
+
+
+      milestone: `Thirty-five mornings, and the Sanctuary.
+
+Halvard does not make speeches. He sits at his fire and he watches the stone and at some point during the days a traveler stays, he says one thing. Once. Without setup, without conclusion, in the register of things that are offered rather than explained. What he said this time will not be recorded here. Some things lose something essential when they are written down — the specific weight of them, the particular quality of silence that follows. What it does is get carried. In the pack, alongside the compass and the hollow stone, it goes into the road ahead and it will be there when the road gets hard enough to need it.
+
+The Emberstone burns quietly at the Sanctuary. Not dimly. Quietly. The way a fire burns when it is not competing with anything.
+
+Chip told the group a rough shape of what Halvard said — not the full thing, a suggestion of it. Will replied, after a pause that felt chosen: that tracks. Brent said: "Papi, I need the full version." Kevin said he was not going to get the full version. Chip confirmed this.
+
+Kevin said he knew. Because he'd been here before.
+
+Different road, he said. Different year. You carry it or you don't, and you can't give the full version to anyone who wasn't there.
+
+The timestamps show a gap after that. Long enough that Brent, who processes things out loud and in real time, had to sit with something in silence, which is not his natural state. He came back with: so Kevin has actually been to the Sanctuary. Kevin replied: different road. That was all he said. The subject didn't close exactly. It just ran out of questions anyone knew how to ask.
+
+Some information changes the room just by arriving. Kevin does this sometimes. Then he acts like he was just clearing his throat.`,
+
+      milestone_attribution: null,
     },
 
     // ── Chapter 8 ─────────────────────────────────────────────────────────────
@@ -929,71 +625,6 @@ What he said after that is what's in the pack.`,
       title:    'The Ashfields',
       location: 'The Ashfields',
       days:     [36, 40],
-
-      milestone: `Forty mornings. The Ashfields are behind them.
-
-The Ashfields prepare the traveler for nothing. That is their particular function. Everything after the Sanctuary — after the warmth and the quiet and Halvard's single observation — arrives here as a stripping. Not threat. Not cold. Just the grey, and the road, and the question of whether the Emberstone still burns when the landscape offers no argument for burning.
-
-It still burns.
-
-On the far side of the Ashfields the road changes. The slope becomes visible for the first time. Not close. But there — something the compass has been pointing toward since the Hollow Pass, finally catching the stone's light.
-
-Brent sent something at the forty-day mark: "I'm going to tell you something I didn't say at the start because saying it at the start would have jinxed it. I had a message ready. The one I was going to send when this fell apart. I had it ready since day twelve. I deleted it this morning." A pause. "You made it through the Ashfields. Will didn't think you would. I didn't either, but I wanted to be wrong. I was. I'm keeping track." Will replied, in the group, thirty seconds later: "My prediction was not pessimism. It was prior data." Kevin replied: "Will." Will replied: "The data has been updated." Brent replied: "That's the nicest thing Will has ever said." Will replied: "That is not what I said." It was exactly what he said.`,
-
-      milestone_attribution: null,
-
-      variants: [
-        {
-          id:           'c8_v1',
-          tiers:        ['good', 'improving'],
-          pull_appears: false,
-          text:         `Out of the Ashfields early enough that the Dreaming Pull hadn't finished assembling its argument. The Emberstone blazed. There is a specific quality to mornings when the answer comes before the case is made — cleaner somehow. Less residue on the road behind.`,
-        },
-        {
-          id:           'c8_v2',
-          tiers:        ['standard'],
-          pull_appears: false,
-          text:         `The Ashfields offer nothing except passage. The Emberstone held. The compass pointed forward. The road on the other side of the grey is the same road, further along.`,
-        },
-        {
-          id:           'c8_v3',
-          tiers:        ['struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull in the Ashfields doesn't argue. It uses the grey itself — the absence of warmth, of landmark, of anything that makes the dreaming place seem worse than where you are. The answer still came. Late, but it came.`,
-        },
-        {
-          id:           'c8_v4',
-          tiers:        ['improving'],
-          pull_appears: false,
-          text:         `The Ashfields look different when the Emberstone is burning well — not different in what they are, different in how far ahead the road is visible. Further than yesterday. Enough.`,
-        },
-        {
-          id:           'c8_v5',
-          tiers:        ['good', 'standard', 'struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull in the Ashfields is not trying to deceive anyone. This is worth understanding clearly.
-
-It genuinely believes the Dreaming Place is better than the road. Not as a trick — as a conviction it has held longer than the road has existed. It has watched travelers come through the Ashfields and continue, and it has never once updated its belief that they made a mistake. From where it lives, there is no Ashen Peak. There is only the Dreaming Place, which is warm and real and asks nothing.
-
-The danger is not deception. The danger is sincerity.
-
-The Emberstone held anyway.`,
-        },
-        {
-          id:           'c8_v6',
-          tiers:        ['good', 'standard', 'struggle'],
-          pull_appears: false,
-          text:         `Stevie's contribution to the Ashfields was consistent and unreflective. Every morning: awake, present, waiting at the door with the patient certainty of a creature that has never once understood why mornings are complicated. The Dreaming Pull has no counter to this. It never has. The dog operates on a frequency the Pull cannot access.`,
-        },
-      ],
-
-      missed: `The grey claimed a morning. The Dreaming Pull in the Ashfields does not argue — it simply offers what the grey already is, which is the absence of any particular reason to get up, which is a more effective argument than most of what it usually deploys.
-
-Will sent: "The Ashfields required only that you walk through them. Get up tomorrow." Brent said: "Papi the slope is right there on the other side, visible from here." Kevin said: "One morning. Not a trend. Don't let it become one."
-
-The compass still points. The road will be there.`,
-
-      artifact_seed: null,
 
       scheduled: [
         {
@@ -1022,6 +653,13 @@ The Pull notes this. It is keeping its own ledger.`,
         },
       ],
 
+
+      missed: `The grey claimed a morning. The Dreaming Pull in the Ashfields does not argue — it simply offers what the grey already is, which is the absence of any particular reason to get up, which is a more effective argument than most of what it usually deploys.
+
+Will sent: "The Ashfields required only that you walk through them. Get up tomorrow." Brent said: "Papi the slope is right there on the other side, visible from here." Kevin said: "One morning. Not a trend. Don't let it become one."
+
+The compass still points. The road will be there.`,
+
       decision: {
         prompt:  `The Ashfields open ahead. No landmarks. Grey to the horizon. Only the compass bearing and the Emberstone's light.`,
         choices: [
@@ -1037,6 +675,19 @@ The Pull notes this. It is keeping its own ledger.`,
           },
         ],
       },
+      milestone: `Forty mornings. The Ashfields are behind them.
+
+The Ashfields prepare the traveler for nothing. That is their particular function. Everything after the Sanctuary — after the warmth and the quiet and Halvard's single observation — arrives here as a stripping. Not threat. Not cold. Just the grey, and the road, and the question of whether the Emberstone still burns when the landscape offers no argument for burning.
+
+It still burns.
+
+On the far side of the Ashfields the road changes. The slope becomes visible for the first time. Not close. But there — something the compass has been pointing toward since the Hollow Pass, finally catching the stone's light.
+
+Brent sent something at the forty-day mark: "I'm going to tell you something I didn't say at the start because saying it at the start would have jinxed it. I had a message ready. The one I was going to send when this fell apart. I had it ready since day twelve. I deleted it this morning." A pause. "You made it through the Ashfields. Will didn't think you would. I didn't either, but I wanted to be wrong. I was. I'm keeping track." Will replied, in the group, thirty seconds later: "My prediction was not pessimism. It was prior data." Kevin replied: "Will." Will replied: "The data has been updated." Brent replied: "That's the nicest thing Will has ever said." Will replied: "That is not what I said." It was exactly what he said.`,
+
+      milestone_attribution: null,
+
+
     },
 
     // ── Chapter 9 ─────────────────────────────────────────────────────────────
@@ -1045,73 +696,6 @@ The Pull notes this. It is keeping its own ledger.`,
       title:    'The Ridge of the Unremembered',
       location: 'The Ridge of the Unremembered',
       days:     [41, 45],
-
-      milestone: `Forty-five mornings.
-
-The Ridge of the Unremembered does not offer comfort. It offers clarity. The Emberstone burns cleanly here — no fog, no grey, nothing absorbing the light. Just the burn and the road and how far the light reaches on a given morning, which on a good morning at this elevation is further than it has been at any point since Downers Grove.
-
-On the horizon: something. Not named yet. Not close. But the compass has been pointing at it since the Hollow Pass and the stone's light reached it this morning for the first time, briefly, before settling back to its normal range. It was there. Yesterday it was not there.
-
-The Ridge was named for the campaigns that stopped here. Not failed — stopped. The travelers who got this far are not gone. They are in the comfortable life, which is real and not wrong, not remembering clearly what the air felt like at this altitude. The Ridge holds the shapes of their almost. The view they were about to have.
-
-Kevin sent something during the Ridge stretch at a timestamp that described what his morning had required before any of this. His older one had asked why he gets up before it's light. Kevin told him: because the morning is better before anyone else gets to it. The kid thought about it. Then he got up with Kevin. Kevin said he went back to sleep twenty minutes later. Chip said: still. Kevin said: he does that, like you.
-
-Will put it in the ledger. Kevin said not to. It was already in there.`,
-
-      milestone_attribution: null,
-
-      variants: [
-        {
-          id:           'c9_v1',
-          tiers:        ['good', 'improving'],
-          pull_appears: false,
-          text:         `{{checkin_time}} on the Ridge. The Emberstone lit the far distance of it — further than any morning since the Ashfields. Something on the horizon caught the light and was visible for a moment before the stone settled to its normal reach. It was there.`,
-        },
-        {
-          id:           'c9_v2',
-          tiers:        ['standard'],
-          pull_appears: false,
-          text:         `Hard ground, clear progress. The Ridge offers no warmth but it offers visibility. The Emberstone held. The compass pointed. The road continued toward what the compass has been pointing at since the Pass.`,
-        },
-        {
-          id:           'c9_v3',
-          tiers:        ['struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull found something on the Ridge it hadn't tried before — the memory of easier stretches. Not any specific chapter. Just the general quality of what easier felt like, offered accurately, without embellishment. The Emberstone held. The Ridge felt longer this morning than it was.`,
-        },
-        {
-          id:           'c9_v4',
-          tiers:        ['improving'],
-          pull_appears: false,
-          text:         `The Emberstone lit the Ridge further this morning. Something on the horizon was visible — distant, clear for a moment, then settling back as the stone found its normal range. It was there. Yesterday it wasn't there at all.`,
-        },
-        {
-          id:           'c9_v5',
-          tiers:        ['good', 'standard', 'struggle'],
-          pull_appears: false,
-          text:         `The Ridge holds the shapes of campaigns that stopped here. Not the travelers — just the shape of how far they got, the altitude they reached before the comfortable life reasserted itself. Standing on the Ridge means standing above most of those shapes. That is a specific kind of information.`,
-        },
-        {
-          id:           'c9_v6',
-          tiers:        ['standard', 'struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull that shows up on the Ridge is not the same one that worked the Fogmere or made its honest case in the Ashfields. Forty-five answered mornings have changed the angles.
-
-It tried the memory of Madison this morning. Not Downers Grove — further back. A specific morning before the weight of the current life had accumulated. The memory was real. The Pull found it accurately.
-
-What it cannot explain is why that memory requires the Dreaming Place to access.
-
-The Emberstone held. The answer came.`,
-        },
-      ],
-
-      missed: `One morning lost on the Ridge. The Dreaming Pull found the memory it needed — specific, accurate, from the right year — and it used it with precision.
-
-Will sent: "Embarrassing. Get up tomorrow." He did not add anything else, which was its own kind of comment. Kevin sent, an hour later: "The Ridge is where most of these end. You know that. Don't let it be yours." Brent said: "Papi. The thing on the horizon is still there."
-
-Some missed days are different from others. This was one of those. Get up tomorrow.`,
-
-      artifact_seed: null,
 
       scheduled: [
         {
@@ -1160,6 +744,13 @@ Outside on the Ridge, at the exact hour the answer came, something was moving in
         },
       ],
 
+
+      missed: `One morning lost on the Ridge. The Dreaming Pull found the memory it needed — specific, accurate, from the right year — and it used it with precision.
+
+Will sent: "Embarrassing. Get up tomorrow." He did not add anything else, which was its own kind of comment. Kevin sent, an hour later: "The Ridge is where most of these end. You know that. Don't let it be yours." Brent said: "Papi. The thing on the horizon is still there."
+
+Some missed days are different from others. This was one of those. Get up tomorrow.`,
+
       decision: {
         prompt:  `The destination is visible on the horizon for the first time. Just barely. The compass has been pointing at it since the Hollow Pass.`,
         choices: [
@@ -1175,6 +766,21 @@ Outside on the Ridge, at the exact hour the answer came, something was moving in
           },
         ],
       },
+      milestone: `Forty-five mornings.
+
+The Ridge of the Unremembered does not offer comfort. It offers clarity. The Emberstone burns cleanly here — no fog, no grey, nothing absorbing the light. Just the burn and the road and how far the light reaches on a given morning, which on a good morning at this elevation is further than it has been at any point since Downers Grove.
+
+On the horizon: something. Not named yet. Not close. But the compass has been pointing at it since the Hollow Pass and the stone's light reached it this morning for the first time, briefly, before settling back to its normal range. It was there. Yesterday it was not there.
+
+The Ridge was named for the campaigns that stopped here. Not failed — stopped. The travelers who got this far are not gone. They are in the comfortable life, which is real and not wrong, not remembering clearly what the air felt like at this altitude. The Ridge holds the shapes of their almost. The view they were about to have.
+
+Kevin sent something during the Ridge stretch at a timestamp that described what his morning had required before any of this. His older one had asked why he gets up before it's light. Kevin told him: because the morning is better before anyone else gets to it. The kid thought about it. Then he got up with Kevin. Kevin said he went back to sleep twenty minutes later. Chip said: still. Kevin said: he does that, like you.
+
+Will put it in the ledger. Kevin said not to. It was already in there.`,
+
+      milestone_attribution: null,
+
+
     },
 
     // ── Chapter 10 ────────────────────────────────────────────────────────────
@@ -1183,66 +789,6 @@ Outside on the Ridge, at the exact hour the answer came, something was moving in
       title:    'The Forgetting',
       location: 'The Forgetting',
       days:     [46, 50],
-
-      milestone: `Fifty mornings. The Forgetting is behind them.
-
-The Forgetting is a gorge and a bridge and a thing that happens to travelers who stop and look down too long. Not forgetting the destination — the Dreaming Place is still warm, Ashen Peak is still real, the compass still points. What the Forgetting does is subtler: it makes the weight of all of that feel permanent. Makes the distance feel like it has always been there and will always be there and crossing the bridge does not change it. The campaign continues on the other side, it tells you, but the campaign continues as what you already are, not as something different. The crossing is just geography.
-
-The Emberstone blazed on the crossing. Not the steady burn of the Amber Road or the clear burn of the Ridge. Blazed, the way it hasn't blazed since the road started, like it had an opinion about what the Forgetting had just tried.
-
-Among the marks on the railing: a flask. Old. Sealed. A note: water from below. In case you need to remember what you're crossing for. It went into the pack.
-
-Will sent one thing at fifty days: "I had you for the Valley. I was wrong. I am updating my assessment." A pause. Then: "Halfway. Don't make me write another one of these." Brent replied: "Papi Chulo. Will updating his assessment is Will giving a standing ovation, for the record." Kevin said: "I know." Will said: "The assessment has been updated. That is all." Will did not respond to Brent's interpretation. The Emberstone was blazing when all of it arrived.`,
-
-      milestone_attribution: null,
-      artifact_awarded: 'flask',
-
-      variants: [
-        {
-          id:           'c10_v1',
-          tiers:        ['good', 'improving'],
-          pull_appears: false,
-          text:         `The crossing was clean — Emberstone blazing, the gorge below unremarked on, the other side arriving quickly. Some bridges are easier to cross when the answer comes before the Forgetting has found its voice.`,
-        },
-        {
-          id:           'c10_v2',
-          tiers:        ['standard'],
-          pull_appears: false,
-          text:         `The bridge is crossed. The Emberstone held. The flask is in the pack. The other side is the same road, further along, and it looks different from here than it did from Downers Grove.`,
-        },
-        {
-          id:           'c10_v3',
-          tiers:        ['struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull made its largest attempt at the bridge. Not warmth or quiet or memory — something older and harder to name. The suggestion that the other side looks exactly like this side and crossing changes nothing. The Emberstone lit anyway. The flask went into the pack. The other side is different. It is.`,
-        },
-        {
-          id:           'c10_v4',
-          tiers:        ['improving'],
-          pull_appears: false,
-          text:         `The Emberstone lit the bridge and the far bank clearly enough to see what waits there. More road ahead than was visible yesterday. The compass pointed without wavering.`,
-        },
-        {
-          id:           'c10_v5',
-          tiers:        ['good', 'standard', 'struggle'],
-          pull_appears: false,
-          text:         `There is a number carved into the railing: 50. Below it, in a different hand, the same symbol used for Elara's mark in Thornwick — passed through, continued. Different traveler, different campaign. Whoever left it made it at least this far.`,
-        },
-        {
-          id:           'c10_v6',
-          tiers:        ['standard', 'struggle'],
-          pull_appears: false,
-          text:         `Brent sent three messages in quick succession at the halfway mark. The first: "Okay." The second: "I mean genuinely okay, not fine okay." The third: "Will isn't going to say this so I will: we're proud of you. Both of us. Him in his way, which involves timestamps and ledger citations. Me in mine, which involves saying the thing directly. Halfway. Keep going."`,
-        },
-      ],
-
-      missed: `The bridge requires crossing at dawn. Dawn came and went without a crossing. The Dreaming Pull at the Forgetting used the gorge's particular silence well today — the specific suggestion that the other side was not materially different from this side, which is technically accurate and entirely beside the point.
-
-Will sent something that did not leave room for interpretation. Brent said: "Papi the flask is still on the railing." Kevin said: "The Forgetting works on everyone. It worked today. Cross it tomorrow."
-
-The bridge offers the same crossing tomorrow.`,
-
-      artifact_seed: null,
 
       scheduled: [
         {
@@ -1283,6 +829,13 @@ The mark is old enough that the cartographers in Thornwick have it in their reco
         },
       ],
 
+
+      missed: `The bridge requires crossing at dawn. Dawn came and went without a crossing. The Dreaming Pull at the Forgetting used the gorge's particular silence well today — the specific suggestion that the other side was not materially different from this side, which is technically accurate and entirely beside the point.
+
+Will sent something that did not leave room for interpretation. Brent said: "Papi the flask is still on the railing." Kevin said: "The Forgetting works on everyone. It worked today. Cross it tomorrow."
+
+The bridge offers the same crossing tomorrow.`,
+
       decision: {
         prompt:  `The flask is on the railing. The note says: in case you need to remember what you're crossing for. The bridge is halfway crossed.`,
         choices: [
@@ -1298,6 +851,20 @@ The mark is old enough that the cartographers in Thornwick have it in their reco
           },
         ],
       },
+      artifact_awarded: 'flask',
+
+
+      milestone: `Fifty mornings. The Forgetting is behind them.
+
+The Forgetting is a gorge and a bridge and a thing that happens to travelers who stop and look down too long. Not forgetting the destination — the Dreaming Place is still warm, Ashen Peak is still real, the compass still points. What the Forgetting does is subtler: it makes the weight of all of that feel permanent. Makes the distance feel like it has always been there and will always be there and crossing the bridge does not change it. The campaign continues on the other side, it tells you, but the campaign continues as what you already are, not as something different. The crossing is just geography.
+
+The Emberstone blazed on the crossing. Not the steady burn of the Amber Road or the clear burn of the Ridge. Blazed, the way it hasn't blazed since the road started, like it had an opinion about what the Forgetting had just tried.
+
+Among the marks on the railing: a flask. Old. Sealed. A note: water from below. In case you need to remember what you're crossing for. It went into the pack.
+
+Will sent one thing at fifty days: "I had you for the Valley. I was wrong. I am updating my assessment." A pause. Then: "Halfway. Don't make me write another one of these." Brent replied: "Papi Chulo. Will updating his assessment is Will giving a standing ovation, for the record." Kevin said: "I know." Will said: "The assessment has been updated. That is all." Will did not respond to Brent's interpretation. The Emberstone was blazing when all of it arrived.`,
+
+      milestone_attribution: null,
     },
 
     // ── Chapter 11 ────────────────────────────────────────────────────────────
@@ -1306,73 +873,6 @@ The mark is old enough that the cartographers in Thornwick have it in their reco
       title:    'The Valley Below the Peak',
       location: 'The Valley Below the Peak',
       days:     [51, 55],
-
-      milestone: `Fifty-five mornings, in sight of the Peak.
-
-The Valley Below the Peak is not comfortable. The name is wrong about it. The Valley is hard — the altitude makes the Emberstone's light feel exposed, the road offers nothing in the way of warmth or cover or the pleasant fiction that the destination is still far enough away to approach gradually. The destination is directly above. The road goes there. That is the situation in the Valley and it has been that way every morning of this chapter.
-
-The compass that settled in the Hollow Pass has reached the end of its job. It still points at the Peak because it has pointed at the Peak since the Pass and it does not know how to stop. The direction is no longer information. It is confirmation.
-
-What Halvard said at the Sanctuary became useful in the Valley in a way it had not been useful before. The Valley is where it became clear why he said it when he did, and not earlier, when it would have seemed like advice rather than recognition.
-
-Brent sent something on a morning when the Peak was visible through low cloud. He said he knew this stretch — not this one specifically, but the stretch where there is nothing to confirm you are doing the right thing except the fact that you are doing it. He said Will would tell Chip the ledger confirmed it. He said he would tell Chip something different: he already knew. He had known since the Fogmere. He had just needed enough elevation to see it clearly.
-
-Will replied in the group: I would also tell him that. Brent said: I know. I was being diplomatic. Kevin said: the summit is up there. Go get it. Chip replied: yeah. A pause. Yeah, okay. Kevin replied: that's the one.`,
-
-      milestone_attribution: null,
-
-      variants: [
-        {
-          id:           'c11_v1',
-          tiers:        ['good', 'improving'],
-          pull_appears: false,
-          text:         `The Emberstone lit the Valley further than it needed to be lit this morning. The Peak above caught the light — not the summit, not yet, but the shape of the slope ahead. The grey ends. It ends.`,
-        },
-        {
-          id:           'c11_v2',
-          tiers:        ['standard'],
-          pull_appears: false,
-          text:         `A morning in {{month}} in the Valley Below the Peak. The Emberstone held. The compass confirmed what the stone illuminated. The road continued without any help from the landscape, which is the only kind of help the Valley offers.`,
-        },
-        {
-          id:           'c11_v3',
-          tiers:        ['struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull tried the altitude this morning — made the dreaming place sound warmer by comparison to the Valley's cold. The Emberstone caught anyway. The Pull noted this with the resignation of something whose best arguments have started landing less often.`,
-        },
-        {
-          id:           'c11_v4',
-          tiers:        ['improving'],
-          pull_appears: false,
-          text:         `Earlier in the Valley, where the difference in time shows more clearly against the altitude. The Emberstone burned further. The Peak caught more of it. That's enough.`,
-        },
-        {
-          id:           'c11_v5',
-          tiers:        ['good', 'standard', 'struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull that arrives in the Valley Below the Peak is changed from the one that started the campaign.
-
-Fifty mornings of answered alarms have done something to it that it doesn't have a word for. It is not weakened — it is never weakened, it is as old as the dreaming place and the dreaming place is permanent. But it is trying things it doesn't usually try.
-
-It is beginning to understand, for the first time in this campaign, that something may have changed. Not in its offer. In the person receiving it.
-
-The answer keeps coming anyway.`,
-        },
-        {
-          id:           'c11_v6',
-          tiers:        ['standard', 'struggle'],
-          pull_appears: false,
-          text:         `The cartographers in Thornwick have a theory about the Valley. It has to do with travelers who made it this far and then stopped — not fell, stopped — one morning at a time, until the mornings stopped mattering and then stopped entirely. The trees at the Valley's base are what grew from that. Nobody further down the road knows why those trees are different from the others. The asking, apparently, matters.`,
-        },
-      ],
-
-      missed: `The Valley claimed a morning in sight of the Peak. The Dreaming Pull used the altitude — made the summit look like something that would still be there, made the bed look sufficient, made both things feel true simultaneously, which they were, which is the most dangerous version of the argument.
-
-Will sent: "You can see the summit from where you are sleeping. Think about that. Get up tomorrow." Brent said: "Papi the SUMMIT is RIGHT THERE." Kevin sent, after a longer pause than usual: "You know what you're doing. Do the other thing tomorrow."
-
-The Peak is still there. The road continues tomorrow.`,
-
-      artifact_seed: null,
 
       scheduled: [
         {
@@ -1405,6 +905,13 @@ The answer keeps coming. The Pull will be there tomorrow. The difference, from t
         },
       ],
 
+
+      missed: `The Valley claimed a morning in sight of the Peak. The Dreaming Pull used the altitude — made the summit look like something that would still be there, made the bed look sufficient, made both things feel true simultaneously, which they were, which is the most dangerous version of the argument.
+
+Will sent: "You can see the summit from where you are sleeping. Think about that. Get up tomorrow." Brent said: "Papi the SUMMIT is RIGHT THERE." Kevin sent, after a longer pause than usual: "You know what you're doing. Do the other thing tomorrow."
+
+The Peak is still there. The road continues tomorrow.`,
+
       decision: {
         prompt:  `You can see the summit from the Valley. It is the first time the Fellowship could know how close you are, if you told them.`,
         choices: [
@@ -1420,6 +927,21 @@ The answer keeps coming. The Pull will be there tomorrow. The difference, from t
           },
         ],
       },
+      milestone: `Fifty-five mornings, in sight of the Peak.
+
+The Valley Below the Peak is not comfortable. The name is wrong about it. The Valley is hard — the altitude makes the Emberstone's light feel exposed, the road offers nothing in the way of warmth or cover or the pleasant fiction that the destination is still far enough away to approach gradually. The destination is directly above. The road goes there. That is the situation in the Valley and it has been that way every morning of this chapter.
+
+The compass that settled in the Hollow Pass has reached the end of its job. It still points at the Peak because it has pointed at the Peak since the Pass and it does not know how to stop. The direction is no longer information. It is confirmation.
+
+What Halvard said at the Sanctuary became useful in the Valley in a way it had not been useful before. The Valley is where it became clear why he said it when he did, and not earlier, when it would have seemed like advice rather than recognition.
+
+Brent sent something on a morning when the Peak was visible through low cloud. He said he knew this stretch — not this one specifically, but the stretch where there is nothing to confirm you are doing the right thing except the fact that you are doing it. He said Will would tell Chip the ledger confirmed it. He said he would tell Chip something different: he already knew. He had known since the Fogmere. He had just needed enough elevation to see it clearly.
+
+Will replied in the group: I would also tell him that. Brent said: I know. I was being diplomatic. Kevin said: the summit is up there. Go get it. Chip replied: yeah. A pause. Yeah, okay. Kevin replied: that's the one.`,
+
+      milestone_attribution: null,
+
+
     },
 
     // ── Chapter 12 ────────────────────────────────────────────────────────────
@@ -1428,88 +950,6 @@ The answer keeps coming. The Pull will be there tomorrow. The difference, from t
       title:    'Ashen Peak Slope',
       location: 'Ashen Peak',
       days:     [56, 60],
-
-      milestone: `Sixty mornings.
-
-The Waking Fire is at the summit. The Emberstone, which has been sitting on a nightstand and going into a pack and coming back out every morning for sixty days, ends its campaign here.
-
-The ash on the slope records the ascent. Every step. The ash of the high trail is mixed with the residue of the Waking Fire, and what the Waking Fire touches, it marks. Looking back down — sixty mornings of footprints, all the way to where the slope begins, all the way to where the road started, back through the Valley and the Forgetting and the Ridge and the Ashfields and the Sanctuary and the Pass and the Greywood and Thornwick and the Fogmere and the Amber Road and a house in Downers Grove where none of this was inevitable.
-
-Will sent the ledger entry for day sixty. Below the timestamp, in the small precise hand: "Campaign complete. Sixty mornings. One road." A pause — longer than usual. Then a third line, smaller than the others: "I didn't think you'd make it past the Valley. I've been wrong about this since chapter three. For the record: I'm glad I was wrong." Nothing after that. For Will, admitting he was glad is the whole thing.
-
-Brent's message arrived an hour later. It said: "I've been thinking about what to send for day sixty since about day thirty, which tells you something about where my head has been. Here's what I've got: I showed up skeptical and I'm leaving a believer. Not in the quest — in you. The quest was just the shape it took." A pause. Then: "Will wrote something nice too, right? In his way? Tell him I said good job translating."
-
-Kevin's message came at a time that said something about what his morning had already required of him. It said: "I've watched a lot of people try to change something about themselves. Most of them pick the wrong thing to change. You picked the right thing." A pause. "My kids were still asleep when I sent this. First morning in a while. I stayed up to watch the sun come in. Thought of you."
-
-{{decision_echo_1}}
-
-{{decision_echo_2}}
-
-{{decision_echo_3}}
-
-The road back to Downers Grove looks different from up here.
-
-Not because Downers Grove changed.
-
-Because the person looking at it did.`,
-
-      milestone_attribution: null,
-      artifact_awarded:      'ash_mark',
-
-      variants: [
-        {
-          id:           'c12_v1',
-          tiers:        ['good', 'improving'],
-          pull_appears: false,
-          text:         `The road has been climbing without announcing it. From here the climb is visible — looking back, the distance traveled is larger than it felt from inside it. Looking forward, something is there that wasn't visible from the Ashfields. The Emberstone is warmer in the pack than it was at the start.`,
-        },
-        {
-          id:           'c12_v2',
-          tiers:        ['standard'],
-          pull_appears: false,
-          text:         `{{checkin_time}} on the slope. The Emberstone cast more light than the morning needed. Some brightness doesn't calibrate to the moment — it just burns at the rate the moment deserves.
-
-Stevie was at the door at an hour that made the Dreaming Pull's argument collapse before it was finished. The dog has done this more times in this campaign than the Pull has won outright.`,
-        },
-        {
-          id:           'c12_v3',
-          tiers:        ['struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull came to the slope.
-
-It tried something it found in the house in Downers Grove — a version of things from before the quest, before the road, a morning that asked nothing and offered everything. It offered this accurately and without embellishment because the Pull doesn't embellish. It finds the real thing and offers the real thing.
-
-The Emberstone was already lit. The slope was already underfoot. The answer was still no.`,
-        },
-        {
-          id:           'c12_v4',
-          tiers:        ['improving'],
-          pull_appears: false,
-          text:         `One morning from the summit. The full ledger stretches back down the slope — further than it's possible to see clearly from here, all the way back to where the road started. It's a long way. It was walked.`,
-        },
-        {
-          id:           'c12_v5',
-          tiers:        ['good', 'standard', 'struggle'],
-          pull_appears: false,
-          text:         `The flask from the Forgetting has been in the pack since the bridge. Sealed. The note said: in case you need to remember what you're crossing for. This far in, the reason doesn't need a reminder.
-
-The ash on the slope records every step. Looking back down the trail — all those mornings of footprints in the ash, all the way down to where the slope begins.`,
-        },
-        {
-          id:           'c12_v6',
-          tiers:        ['standard', 'struggle'],
-          pull_appears: true,
-          text:         `The Dreaming Pull on the slope of Ashen Peak is quieter than it has been at any point in the campaign. Not gone — it is never gone. But it has made its case completely and the answer has been given completely and there is less left to negotiate.
-
-It will be there tomorrow. It will always be there. The difference, from the slope, is that it no longer sounds like the only reasonable voice in the room.`,
-        },
-      ],
-
-      missed: `The slope recorded a blank today. The ash here is patient — it will hold tomorrow's step when it comes.
-
-The summit is still there.`,
-
-      artifact_seed: null,
 
       scheduled: [
         {
@@ -1548,6 +988,11 @@ One morning left.`,
         },
       ],
 
+
+      missed: `The slope recorded a blank today. The ash here is patient — it will hold tomorrow's step when it comes.
+
+The summit is still there.`,
+
       decision: {
         prompt:  `The full chronicle is in the pack — every entry, every morning, the whole road. The summit is one morning ahead.`,
         choices: [
@@ -1563,6 +1008,34 @@ One morning left.`,
           },
         ],
       },
+      artifact_awarded:      'ash_mark',
+
+
+      milestone: `Sixty mornings.
+
+The Waking Fire is at the summit. The Emberstone, which has been sitting on a nightstand and going into a pack and coming back out every morning for sixty days, ends its campaign here.
+
+The ash on the slope records the ascent. Every step. The ash of the high trail is mixed with the residue of the Waking Fire, and what the Waking Fire touches, it marks. Looking back down — sixty mornings of footprints, all the way to where the slope begins, all the way to where the road started, back through the Valley and the Forgetting and the Ridge and the Ashfields and the Sanctuary and the Pass and the Greywood and Thornwick and the Fogmere and the Amber Road and a house in Downers Grove where none of this was inevitable.
+
+Will sent the ledger entry for day sixty. Below the timestamp, in the small precise hand: "Campaign complete. Sixty mornings. One road." A pause — longer than usual. Then a third line, smaller than the others: "I didn't think you'd make it past the Valley. I've been wrong about this since chapter three. For the record: I'm glad I was wrong." Nothing after that. For Will, admitting he was glad is the whole thing.
+
+Brent's message arrived an hour later. It said: "I've been thinking about what to send for day sixty since about day thirty, which tells you something about where my head has been. Here's what I've got: I showed up skeptical and I'm leaving a believer. Not in the quest — in you. The quest was just the shape it took." A pause. Then: "Will wrote something nice too, right? In his way? Tell him I said good job translating."
+
+Kevin's message came at a time that said something about what his morning had already required of him. It said: "I've watched a lot of people try to change something about themselves. Most of them pick the wrong thing to change. You picked the right thing." A pause. "My kids were still asleep when I sent this. First morning in a while. I stayed up to watch the sun come in. Thought of you."
+
+{{decision_echo_1}}
+
+{{decision_echo_2}}
+
+{{decision_echo_3}}
+
+The road back to Downers Grove looks different from up here.
+
+Not because Downers Grove changed.
+
+Because the person looking at it did.`,
+
+      milestone_attribution: null,
     },
 
   ],
@@ -1656,7 +1129,6 @@ module.exports = {
   SPECIAL_NARRATIVES,
   getPerformanceTier,
   getEmberLevel,
-  pickVariant,
   renderText,
   // helpers still used by server.js / routes
   getChapter,

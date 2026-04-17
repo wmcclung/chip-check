@@ -117,6 +117,21 @@ function buildQuestEmailSection(quest) {
     milestoneHtml = `
       <p style="color:#f0c060;font-size:12px;font-weight:bold;margin:12px 0 6px;letter-spacing:0.1em;text-transform:uppercase">✦ Milestone Reached ✦</p>
       ${renderParas(quest.milestone.text, 'color:#c8a96e;font-size:13px;font-style:italic;line-height:1.6')}`;
+
+    // Chapter counter (below milestone text)
+    if (quest.chapter_summary) {
+      const { formatChapterCounters } = require('./discoveryRegistry');
+      const formatted = formatChapterCounters(quest.chapter_summary);
+      if (formatted) {
+        const counterLine = formatted === 'full_discovery'
+          ? 'Full discovery this chapter.'
+          : formatted;
+        milestoneHtml += `
+          <p style="color:#5a4a2a;font-size:11px;border-top:1px solid #3a2a00;margin-top:12px;padding-top:10px;letter-spacing:0.04em">
+            Ch. ${quest.chapter_number} &middot; ${counterLine}
+          </p>`;
+      }
+    }
   }
 
   // Decision made section
@@ -132,6 +147,33 @@ function buildQuestEmailSection(quest) {
       </div>`;
   }
 
+  // Day-60 reveal section
+  let revealHtml = '';
+  if (quest.discover_reveal) {
+    const { carried, missed } = quest.discover_reveal;
+    const catLabel = { items: 'Item', lore: 'Lore', encounters: 'Encounter' };
+    const renderEntries = (entries) => entries.map(e =>
+      `<li style="margin:0 0 8px;color:#c8a96e;font-size:12px;list-style:none;padding-left:0">
+         <span style="color:#8a6e3e;font-size:10px;text-transform:uppercase;letter-spacing:0.1em;margin-right:6px">${catLabel[e.category] || e.category}</span>${e.meta.description || e.meta.missedText || ''}</li>`
+    ).join('');
+    const carriedChapters = carried.map(ch =>
+      `<p style="color:#a89060;font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.1em;margin:10px 0 4px">Ch. ${ch.chapterNum} · ${ch.chapterTitle}</p>
+       <ul style="margin:0;padding:0">${renderEntries(ch.entries)}</ul>`
+    ).join('');
+    const missedChapters = missed.map(ch =>
+      `<p style="color:#6a5a3a;font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.1em;margin:10px 0 4px">Ch. ${ch.chapterNum} · ${ch.chapterTitle}</p>
+       <ul style="margin:0;padding:0">${renderEntries(ch.entries)}</ul>`
+    ).join('');
+    revealHtml = `
+      <div style="border-top:1px solid #3a2a00;margin-top:20px;padding-top:16px">
+        <p style="color:#c8a96e;font-size:13px;font-weight:bold;letter-spacing:0.15em;text-transform:uppercase;margin:0 0 14px">THE ROAD YOU WALKED</p>
+        <p style="color:#8a7a5a;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;margin:0 0 8px">WHAT YOU CARRIED</p>
+        ${carriedChapters || '<p style="color:#5a5a6e;font-size:12px">Nothing carried.</p>'}
+        <p style="color:#8a7a5a;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;margin:14px 0 8px">WHAT THE ROAD HELD</p>
+        ${missedChapters || '<p style="color:#5a5a6e;font-size:12px">Full discovery — nothing was missed.</p>'}
+      </div>`;
+  }
+
   return `
     <div style="border-top:1px solid #3a2a00;margin-top:24px;padding-top:20px">
       <p style="color:#8a7a5a;font-size:11px;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px">The Emberstone Chronicles</p>
@@ -142,6 +184,7 @@ function buildQuestEmailSection(quest) {
       ${dailyParasHtml}
       ${milestoneHtml}
       ${decisionHtml}
+      ${revealHtml}
     </div>`;
 }
 

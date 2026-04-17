@@ -29,6 +29,7 @@ const {
   createNewCampaign,
   getAllCampaigns,
   getDecisionLog,
+  resetCampaign,
 } = require('../db');
 const {
   CAMPAIGN_1,
@@ -911,8 +912,10 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
               <button class="btn-test" onclick="questAction('trigger-fall',     'Archive current campaign as FALLEN and start a new one.')">Trigger Campaign Fall</button>
               <button class="btn-test" onclick="questAction('trigger-complete', 'Archive current campaign as COMPLETED and start a new one.')">Trigger Campaign Complete</button>
               <button class="btn-test" onclick="questAction('decisions/clear', 'Reset decision log to empty? This cannot be undone.')">Clear Decision Log</button>
+              <button class="btn-test btn-danger" onclick="resetCampaign()">Reset Campaign</button>
             </div>
             <p id="quest-test-result" class="muted small" style="min-height:1.2em"></p>
+            <p id="reset-campaign-result" class="muted small" style="min-height:1.2em"></p>
 
             <!-- Story log -->
             <h3 class="admin-section-label" style="margin-top:1.2rem">Story Log <a href="/story" style="font-size:0.78rem;color:#8a6e3e;margin-left:0.5rem">View full chronicle →</a></h3>
@@ -1080,10 +1083,37 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
           if (d.ok) setTimeout(() => location.reload(), 1200);
         }).catch(() => { if (el) el.textContent = 'Network error.'; });
     }
+
+    // Reset Campaign
+    function resetCampaign() {
+      if (!confirm('Reset campaign? This cannot be undone.')) return;
+      var el = document.getElementById('reset-campaign-result');
+      fetch('/admin/reset-campaign', { method: 'POST' })
+        .then(r => r.json()).then(d => {
+          if (d.ok) {
+            if (el) el.textContent = 'Campaign reset. Quest day set to 0. Discovery log cleared.';
+            setTimeout(() => location.reload(), 1200);
+          } else {
+            if (el) el.textContent = d.error || 'Error resetting campaign.';
+          }
+        }).catch(() => { if (el) el.textContent = 'Network error.'; });
+    }
   </script>
 </body>
 </html>`;
 }
+
+// ── POST /admin/reset-campaign ────────────────────────────────────────────────
+
+router.post('/admin/reset-campaign', requireAuth, withTimeout(async (req, res) => {
+  try {
+    await resetCampaign();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[/admin/reset-campaign]', err);
+    res.status(500).json({ error: err.message });
+  }
+}));
 
 function escapeHtml(str) {
   if (str === null || str === undefined) return '';
