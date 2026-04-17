@@ -15,7 +15,8 @@
       "Bash(node --check server.js email.js quest.js db.js routes/checkin.js routes/admin.js routes/story.js routes/stats.js routes/join.js)",
       "Bash(ls c:/Users/wpmcc/morning-accountability/*.js c:/Users/wpmcc/morning-accountability/*.mjs)",
       "Read(//c/Users/wpmcc/Downloads/**)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(git commit -m ' *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\wpmcc\\Downloads"
