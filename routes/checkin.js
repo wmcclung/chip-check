@@ -179,9 +179,18 @@ router.get('/', async (req, res) => {
     const successQuote  = (checkin && checkin.quote_text)
       ? { text: checkin.quote_text, speaker: checkin.quote_speaker }
       : getSuccessQuote(streak);
-    const failureQuote  = (checkin && checkin.quote_text && status === 'missed')
-      ? { text: checkin.quote_text, speaker: checkin.quote_speaker }
-      : getFailureQuote();
+    let failureQuote;
+    if (checkin && status === 'missed') {
+      if (checkin.quote_text) {
+        failureQuote = { text: checkin.quote_text, speaker: checkin.quote_speaker };
+      } else {
+        failureQuote = getFailureQuote();
+        // Persist so every subsequent load shows the same quote
+        updateCheckin(dateStr, { quote_text: failureQuote.text, quote_speaker: failureQuote.speaker }).catch(() => {});
+      }
+    } else {
+      failureQuote = getFailureQuote();
+    }
     const selfieUrl     = checkin && checkin.selfie_url ? checkin.selfie_url : null;
     const bestStreak    = parseInt(await getSetting('best_streak') || '0', 10);
 
