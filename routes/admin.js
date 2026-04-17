@@ -161,10 +161,11 @@ router.get('/admin', requireAuth, withTimeout(async (req, res) => {
   const questCampaign = await getCurrentCampaign();
   const allCampaigns  = await getAllCampaigns();
   const wakeStats     = await getWakeStats();
-  let decisionLog     = {};
+  let decisionLog  = {};
   try { decisionLog = await getDecisionLog(); } catch (_) {}
+  const archiveToken = await getSetting('archive_token') || null;
 
-  res.send(adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr, wakeGoalTime, chipPhone, chipEmail, questState, questCampaign, allCampaigns, wakeStats, decisionLog }));
+  res.send(adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr, wakeGoalTime, chipPhone, chipEmail, questState, questCampaign, allCampaigns, wakeStats, decisionLog, archiveToken }));
   console.log('[GET /admin] Route complete, response sent');
 }));
 
@@ -588,7 +589,7 @@ function statusBadge(status) {
   return map[status] || `<span class="badge">${escapeHtml(status)}</span>`;
 }
 
-function adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr, wakeGoalTime, chipPhone, chipEmail, questState, questCampaign, allCampaigns, wakeStats, decisionLog = {} }) {
+function adminDashboard({ name, streak, bestStreak, today, history, friends, openHour, deadlineHour, dateStr, wakeGoalTime, chipPhone, chipEmail, questState, questCampaign, allCampaigns, wakeStats, decisionLog = {}, archiveToken = null }) {
   const activeCount = friends.filter(f => f.active).length;
 
   let historyRows  = '';
@@ -957,6 +958,27 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
         <p id="pw-msg" class="muted small"></p>
       </div>
     </details>
+
+    <!-- Archive Link -->
+    <details>
+      <summary class="section-summary">📖 Chronicle Archive</summary>
+      <div class="admin-card">
+        <p class="muted small" style="margin-bottom:1rem">Share this link with the party at campaign end. Regenerating invalidates the old link.</p>
+        <div id="archive-link-block" style="margin-bottom:0.75rem">
+          ${archiveToken
+            ? `<div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+                 <code id="archive-url" style="font-size:0.78rem;background:#1a1a2e;padding:0.3rem 0.6rem;border-radius:4px;color:#c8a96e;word-break:break-all">${escapeHtml(`${process.env.APP_URL || ''}/archive/${archiveToken}`)}</code>
+                 <button class="btn-sm btn-test" onclick="copyArchiveLink()">Copy</button>
+               </div>`
+            : `<p class="muted small">No token yet — generate one below.</p>`
+          }
+        </div>
+        <button class="btn-test" onclick="generateArchiveToken()">
+          ${archiveToken ? 'Regenerate Link' : 'Generate Link'}
+        </button>
+        <p id="archive-token-result" class="muted small" style="min-height:1.2em;margin-top:0.5rem"></p>
+      </div>
+    </details>
   </div>
 
   <!-- Edit Day Modal -->
@@ -1085,6 +1107,30 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
     }
 
     // Reset Campaign
+    function generateArchiveToken() {
+      var el = document.getElementById('archive-token-result');
+      if (!confirm('Generate a new archive link? The old link will stop working.')) return;
+      fetch('/admin/generate-archive-token', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.ok) {
+            var base = window.location.origin;
+            var url  = base + '/archive/' + d.token;
+            var block = document.getElementById('archive-link-block');
+            if (block) block.innerHTML = '<div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap"><code id="archive-url" style="font-size:0.78rem;background:#1a1a2e;padding:0.3rem 0.6rem;border-radius:4px;color:#c8a96e;word-break:break-all">' + url + '</code><button class="btn-sm btn-test" onclick="copyArchiveLink()">Copy</button></div>';
+            if (el) el.textContent = 'New link generated.';
+          } else {
+            if (el) el.textContent = 'Error: ' + (d.error || 'unknown');
+          }
+        }).catch(function() { if (el) el.textContent = 'Network error.'; });
+    }
+    function copyArchiveLink() {
+      var el = document.getElementById('archive-url');
+      if (el) navigator.clipboard.writeText(el.textContent).then(function() {
+        el.style.color = '#7aab7a';
+        setTimeout(function() { el.style.color = ''; }, 1500);
+      });
+    }
     function resetCampaign() {
       if (!confirm('Reset campaign? This cannot be undone.')) return;
       var el = document.getElementById('reset-campaign-result');
@@ -1102,6 +1148,43 @@ function adminDashboard({ name, streak, bestStreak, today, history, friends, ope
 </body>
 </html>`;
 }
+
+// ── POST /api/admin/verify ────────────────────────────────────────────────────
+
+router.post('/api/admin/verify', withTimeout(async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ ok: false });
+    const stored = await getSetting('admin_password');
+    res.json({ ok: password === stored });
+  } catch (err) {
+    res.status(500).json({ ok: false });
+  }
+}));
+
+// ── GET /api/archive/validate/:token ─────────────────────────────────────────
+
+router.get('/api/archive/validate/:token', withTimeout(async (req, res) => {
+  try {
+    const stored = await getSetting('archive_token');
+    res.json({ valid: !!(stored && stored === req.params.token) });
+  } catch (err) {
+    res.json({ valid: false });
+  }
+}));
+
+// ── POST /admin/generate-archive-token ───────────────────────────────────────
+
+router.post('/admin/generate-archive-token', requireAuth, withTimeout(async (req, res) => {
+  try {
+    const crypto = require('crypto');
+    const token  = crypto.randomBytes(20).toString('hex');
+    await setSetting('archive_token', token);
+    res.json({ ok: true, token });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+}));
 
 // ── POST /admin/reset-campaign ────────────────────────────────────────────────
 
