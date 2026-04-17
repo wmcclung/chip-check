@@ -161,6 +161,7 @@ function populateRivianEntry(entry, { price, changePct, questDay }) {
 
 module.exports = {
   RIVIAN_DAYS,
+  RIVIAN_ENTRIES,
   getNextRivianEntry,
   populateRivianEntry,
 };
